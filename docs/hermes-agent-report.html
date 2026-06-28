@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes Agent — Slack Bot Deployment: Common Problems &amp; Solutions</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a2e; line-height:1.6; background:#f5f5f8; }
+  .container { max-width: 1000px; margin: 0 auto; padding: 40px 20px; }
+  header { background: linear-gradient(135deg, #1a1a2e, #16213e); color: #fff; padding: 60px 0 40px; text-align: center; }
+  header h1 { font-size: 2.2em; margin-bottom: 8px; }
+  header p { opacity: 0.8; font-size: 1.1em; max-width: 600px; margin: 0 auto; }
+  .meta { display:flex; justify-content:center; gap:24px; margin-top:16px; opacity:0.7; font-size:0.9em; }
+  h2 { color: #0f3460; margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 2px solid #e94560; font-size: 1.5em; }
+  h3 { color: #16213e; margin: 24px 0 8px; font-size: 1.2em; }
+  .issue { background:#fff; border-radius:8px; padding:24px; margin:16px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-left: 4px solid #e94560; }
+  .issue.severe { border-left-color: #e94560; }
+  .issue.high { border-left-color: #f39c12; }
+  .issue.medium { border-left-color: #3498db; }
+  .label { display:inline-block; padding:2px 10px; border-radius:4px; font-size:0.8em; font-weight:600; margin-right:8px; }
+  .label.severe { background:#e94560; color:#fff; }
+  .label.high { background:#f39c12; color:#000; }
+  .label.medium { background:#3498db; color:#fff; }
+  .symptom, .cause, .solution, .casey { margin:12px 0; padding:8px 0; }
+  .symptom strong, .cause strong, .solution strong, .casey strong { color: #0f3460; }
+  code { background:#f0f0f5; padding:1px 6px; border-radius:3px; font-size:0.9em; }
+  pre { background:#16213e; color:#f0f0f5; padding:16px; border-radius:6px; overflow-x:auto; font-size:0.85em; margin:8px 0; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin:24px 0; }
+  .stat { background: #fff; padding:20px; border-radius:8px; text-align:center; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .stat .num { font-size:2em; font-weight:700; color:#e94560; }
+  .stat .desc { color:#666; font-size:0.9em; margin-top:4px; }
+  .checkbox { display:flex; flex-wrap:wrap; gap:12px; background:#fff; padding:20px; border-radius:8px; margin:16px 0; }
+  .check-item { display:flex; align-items:center; gap:8px; min-width:200px; }
+  .check-item input { width:18px; height:18px; }
+  footer { text-align:center; padding:40px; color:#999; font-size:0.85em; }
+  .source { font-size:0.82em; color:#888; margin-top:8px; }
+  @media print { body { background:#fff; } .container { max-width:100%; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Hermes Agent Deployment</h1>
+  <p>Common Problems &amp; Solutions for Slack Bot Agents — compiled from Reddit, Stack Overflow, Quora, X, YouTube, and production experience</p>
+  <div class="meta">
+    <span>June 28, 2026</span>
+    <span>Sources: r/Slack, r/node, Stack Overflow, GitHub, Slack Docs</span>
+  </div>
+</header>
+
+<div class="container">
+
+<div class="stats">
+  <div class="stat">
+    <div class="num">11</div>
+    <div class="desc">Problems Catalogued</div>
+  </div>
+  <div class="stat">
+    <div class="num">5</div>
+    <div class="desc">Hit During Casey Build</div>
+  </div>
+  <div class="stat">
+    <div class="num">3</div>
+    <div class="desc">Platforms Researched</div>
+  </div>
+  <div class="stat">
+    <div class="num">20+</div>
+    <div class="desc">Community Sources</div>
+  </div>
+</div>
+
+<h2>Pre-Launch Checklist</h2>
+<div class="checkbox">
+  <div class="check-item"><input type="checkbox"> Slack app created</div>
+  <div class="check-item"><input type="checkbox"> Manifest applied (scopes + events + Socket Mode)</div>
+  <div class="check-item"><input type="checkbox"> Bot installed to workspace</div>
+  <div class="check-item"><input type="checkbox"> All tokens saved (xoxb + xapp)</div>
+  <div class="check-item"><input type="checkbox"><code>listener.mjs</code> created with LLM system prompt</div>
+  <div class="check-item"><input type="checkbox"> launchd plist created and loaded</div>
+  <div class="check-item"><input type="checkbox"> API key in plist EnvVariables (WITH credits!)</div>
+  <div class="check-item"><input type="checkbox"> MCP block in <code>opencode.jsonc</code></div>
+  <div class="check-item"><input type="checkbox"> MCP permissions added</div>
+  <div class="check-item"><input type="checkbox"><code>SLACK_MCP_XOXB_TOKEN</code> exported</div>
+  <div class="check-item"><input type="checkbox"> OpenCode agent <code>.md</code> created</div>
+  <div class="check-item"><input type="checkbox"> OpenCode restarted</div>
+  <div class="check-item"><input type="checkbox"><code>@Agent</code> tested in Slack DM and channel</div>
+</div>
+
+<h2>Top 11 Problems &amp; Solutions</h2>
+
+<!-- Problem 1: app_mention not firing -->
+<div class="issue severe">
+  <span class="label severe">CRITICAL</span> <span class="label medium">Hit by Casey</span>
+  <h3>1. <code>app_mention</code> Not Firing — Bot Ignores @mentions</h3>
+  <div class="symptom"><strong>Symptoms:</strong> Bot responds fine in DMs but completely ignores <code>@botname</code> mentions in channels. No events received, no errors logged. Users tag the bot repeatedly with no response.</div>
+  <div class="cause"><strong>Root cause:</strong> (a) <code>app_mention</code> event not subscribed under Event Subscriptions. (b) <code>app_mentions:read</code> scope missing from Bot Token Scopes. (c) Bot was never <code>/invite</code>'d into the channel. (d) Using Socket Mode on serverless platforms (Glitch, Cloudflare) where WebSocket routing fails silently.</div>
+  <div class="solution"><strong>Solution:</strong> Go to api.slack.com/apps → Event Subscriptions → Subscribe to Bot Events → toggle ON <code>app_mention</code>. Add <code>app_mentions:read</code> scope and reinstall app. Run <code>/invite @botname</code> in every channel. If on cloud platforms, use HTTP event endpoints instead of Socket Mode.</div>
+  <div class="casey"><strong>Casey relevance:</strong> This was the exact issue. Casey could only respond via the <code>message</code> event fallback (scanning text for <code>&lt;@U0BD79D3ZHD&gt;</code>). Once the Slack manifest was applied with <code>app_mention</code> subscription, dedicated mention events fire correctly.</div>
+</div>
+
+<!-- Problem 2: OAuth Scope Confusion -->
+<div class="issue severe">
+  <span class="label severe">CRITICAL</span> <span class="label medium">Hit by Casey</span>
+  <h3>2. OAuth Scope Confusion — <code>missing_scope</code> Errors</h3>
+  <div class="symptom"><strong>Symptoms:</strong> Bot can read channels but can't write. Bot sees public channels but not private ones. Certain tools silently fail. API returns <code>missing_scope</code> for basic operations like listing users, posting messages, or reading private channel history.</div>
+  <div class="cause"><strong>Root cause:</strong> (a) Scopes added in OAuth & Permissions but app was never reinstalled — scopes don't take effect until reinstall. (b) Different token types (<code>xoxb-</code> bot, <code>xoxp-</code> user, <code>xapp-</code> app-level) have different scope capabilities. (c) Private channels use the <code>groups:*</code> scope family, not <code>channels:*</code>.</div>
+  <div class="solution"><strong>Solution:</strong> Add ALL required scopes, then click "Reinstall to Workspace." Minimum set: <code>chat:write</code>, <code>channels:history</code>, <code>groups:history</code>, <code>im:history</code>, <code>im:write</code>, <code>channels:read</code>, <code>groups:read</code>, <code>users:read</code>, <code>app_mentions:read</code>, <code>channels:manage</code>, <code>groups:write</code>. Use Slack App Manifest for consistent scope definition.</div>
+  <div class="casey"><strong>Casey relevance:</strong> Casey initially only had <code>commands</code> scope. Adding all scopes via the manifest file and reinstalling the app fixed all <code>missing_scope</code> errors. The <code>groups:write</code> scope was needed to create private channels like <code>#metroprints-critical</code>.</div>
+</div>
+
+<!-- Problem 3: Event Subscriptions Verified but No Events -->
+<div class="issue severe">
+  <span class="label severe">CRITICAL</span>
+  <h3>3. Event Subscriptions URL Verified but No Events Delivered</h3>
+  <div class="symptom"><strong>Symptoms:</strong> Request URL passes Slack's challenge verification (green checkmark), but no POST requests ever arrive. <code>{ type: "hello" }</code> arrives via Socket Mode, but no event payloads follow.</div>
+  <div class="cause"><strong>Root cause:</strong> (a) App was configured but never installed via OAuth into the workspace. (b) Events subscribed under "Workspace Events" instead of "Bot Events." (c) Channel type mismatch: subscribed to <code>message.channels</code> but testing in DM (needs <code>message.im</code>). (d) Socket Mode App-Level Token lacks <code>connections:write</code> scope.</div>
+  <div class="solution"><strong>Solution:</strong> Complete the OAuth installation after configuring events. Subscribe to ALL message event types (<code>message.channels</code>, <code>message.groups</code>, <code>message.im</code>, <code>message.mpim</code>). Verify App-Level Token has <code>connections:write</code>. Events are <b>not retroactive</b> — reinstall if you change subscriptions.</div>
+  <div class="casey"><strong>Casey relevance:</strong> Casey connected to Socket Mode and received <code>hello</code> but initially got no <code>app_mention</code> events because the event wasn't subscribed. The <code>message</code> fallback caught mentions in DMs but not channels — dedicated <code>app_mention</code> subscription resolved this.</div>
+</div>
+
+<!-- Problem 4: Socket Mode Disconnections -->
+<div class="issue high">
+  <span class="label high">HIGH</span>
+  <h3>4. Socket Mode WebSocket Disconnections</h3>
+  <div class="symptom"><strong>Symptoms:</strong> Bot logs show reconnecting every few minutes. <code>disconnect</code> messages with reasons <code>"refresh_requested"</code> or <code>"warning"</code>. Events missed during reconnect windows. Bot "randomly" stops responding until manually restarted.</div>
+  <div class="cause"><strong>Root cause:</strong> WebSocket URLs expire periodically. Slack sends disconnect warnings ~10 seconds before termination. Apps that don't handle disconnect messages and call <code>apps.connections.open</code> for a new URL go dark. Also: Node.js event loop blocked by synchronous work, Docker NAT timeouts, idle TCP connection kills.</div>
+  <div class="solution"><strong>Solution:</strong> Always listen for <code>disconnect</code> messages and reconnect when <code>reason === "refresh_requested"</code>. Keep event loop fast — offload heavy work. Use keepalive pings every 30 seconds. Maintain up to 10 connections for active-active redundancy during transitions.</div>
+  <div class="casey"><strong>Casey relevance:</strong> Casey's listener properly handles disconnects with auto-reconnect. The <code>onclose</code> handler calls <code>connect()</code> after 5 seconds, and the disconnect reason is logged for debugging.</div>
+</div>
+
+<!-- Problem 5: Rate Limiting -->
+<div class="issue high">
+  <span class="label high">HIGH</span>
+  <h3>5. Slack API Rate Limiting — HTTP 429 Errors</h3>
+  <div class="symptom"><strong>Symptoms:</strong> Bot works then suddenly returns <code>ratelimited</code> errors or stops responding for 30-60 seconds. HTTP 429 responses. Messages dropped or users see "Some messages from this app are not being displayed." LLM bots that reply quickly to multiple users get hammered.</div>
+  <div class="cause"><strong>Root cause:</strong> Tiered rate limits: Tier 1 (~1/sec): <code>chat.postMessage</code>. Tier 2 (~20/min): most methods including <code>reactions.add</code>. Tier 3 (~50/min): <code>users.info</code>. May 2025: non-Marketplace apps face stricter limits on <code>conversations.history</code> (1 req/min, 15 objects max).</div>
+  <div class="solution"><strong>Solution:</strong> Implement exponential backoff with jitter respecting <code>Retry-After</code> headers. Use token bucket queue. Batch messages. Use <code>response_url</code> for unlimited follow-ups from slash commands. For LLM bots: batch responses, use thread replies, implement per-channel cooldowns.</div>
+  <div class="casey"><strong>Casey relevance:</strong> Currently low risk — Casey only responds to @mentions (not all messages) and uses thread replies. If traffic scales, add a per-user/per-channel cooldown queue.</div>
+</div>
+
+<!-- Problem 6: Bot Not Invited to Channels -->
+<div class="issue high">
+  <span class="label high">HIGH</span> <span class="label medium">Hit by Casey</span>
+  <h3>6. Bot Not Visible / Not Receiving Messages in Channels</h3>
+  <div class="symptom"><strong>Symptoms:</strong> Bot was added to a channel but doesn't appear in member list. No <code>message.channels</code> events received. <code>@botname</code> doesn't resolve. App installed to workspace but bot user invisible.</div>
+  <div class="cause"><strong>Root cause:</strong> Installing the app does NOT auto-add the bot to channels. Someone must run <code>/invite @botname</code> in each channel. For private channels, <code>groups:history</code> scope required. Event subscriptions must be under "Bot Events" not "Workspace Events."</div>
+  <div class="solution"><strong>Solution:</strong> Run <code>/invite @botname</code> in every channel. Confirm with <code>/who</code> or channel details → Members. Ensure <code>message.channels</code> AND <code>message.groups</code> both subscribed under Bot Events. Add <code>channels:history</code> and <code>groups:history</code> scopes.</div>
+  <div class="casey"><strong>Casey relevance:</strong> Casey was invited to <code>#metroprints-critical</code> and <code>#metroprints-alerts</code> via API during setup. The <code>conversations.invite</code> call added Shah and Casey to both private channels.</div>
+</div>
+
+<!-- Problem 7: Token Revocation on Reinstall -->
+<div class="issue high">
+  <span class="label high">HIGH</span>
+  <h3>7. App Reinstallation Breaks Tokens</h3>
+  <div class="symptom"><strong>Symptoms:</strong> Bot suddenly stops with <code>invalid_auth</code> or <code>token_revoked</code>. Events stop. Workspace admin reinstalled the app and the old token is invalidated but still in env vars. Everything breaks silently.</div>
+  <div class="cause"><strong>Root cause:</strong> Uninstalling revokes the bot token, removes bot user, deletes slash commands, removes webhooks. Reinstall generates a brand-new token. Team ID and Bot User ID remain same, but the token itself changes.</div>
+  <div class="solution"><strong>Solution:</strong> Never hardcode tokens. Use a database to store installation tokens. Subscribe to <code>tokens_revoked</code> and <code>app_uninstalled</code> events. After reinstall, update all token references (env vars, plist, OpenCode MCP config).</div>
+  <div class="casey"><strong>Casey relevance:</strong> Casey's tokens are stored in multiple places: <code>listener.mjs</code> (hardcoded), plist (hardcoded), <code>.zshrc</code>, <code>.env</code>. If app is reinstalled, ALL must be updated. Consider moving to a single config file or secrets manager.</div>
+</div>
+
+<!-- Problem 8: 3-Second ACK -->
+<div class="issue high">
+  <span class="label high">HIGH</span>
+  <h3>8. The 3-Second Acknowledgment Deadline</h3>
+  <div class="symptom"><strong>Symptoms:</strong> Slash commands fail with <code>"Timeout was reached"</code>. Events retry, then subscriptions disabled. Users see "This app is not responding." After 95% failure rate in 60 minutes, Slack disables event subscriptions.</div>
+  <div class="cause"><strong>Root cause:</strong> Slack requires HTTP 200 response within 3 seconds. LLM calls, database queries, or chained API requests done synchronously before ACKing miss the deadline.</div>
+  <div class="solution"><strong>Solution:</strong> Ack immediately (<code>200 OK</code>). Process async with queue, worker threads, or <code>response_url</code>. For Socket Mode, send the <code>ack</code> envelope immediately before any processing.</div>
+  <div class="casey"><strong>Casey relevance:</strong> Casey's listener sends the <code>ws.send(JSON.stringify({ envelope_id, type: "ack" }))</code> immediately on receiving events, before LLM calls. This meets the 3-second deadline.</div>
+</div>
+
+<!-- Problem 9: Multiple Instances Clashing -->
+<div class="issue medium">
+  <span class="label medium">MEDIUM</span>
+  <h3>9. Multiple Bot Instances Clashing — <code>too_many_websockets</code></h3>
+  <div class="symptom"><strong>Symptoms:</strong> Bot fails to connect with <code>too_many_websockets</code> or HTTP 409 Conflict. Even with one instance running. After restart, can't establish Socket Mode connection.</div>
+  <div class="cause"><strong>Root cause:</strong> Slack enforces hard limit of 10 concurrent WebSocket connections per app. Previous instances didn't cleanly close their WebSocket. Ghost connections persist until Slack timeout (minutes). Multiple deployments sharing same App-Level Token.</div>
+  <div class="solution"><strong>Solution:</strong> Use ONE Socket Mode connection per app, globally. Implement graceful shutdown (catch SIGTERM, call disconnect, wait for close frame). If <code>too_many_websockets</code> appears, regenerate App-Level Token (kills all existing connections), then restart single instance. Use HTTP event endpoints for HA.</div>
+  <div class="casey"><strong>Casey relevance:</strong> Before restarting Casey, always <code>launchctl unload</code> first. The graceful shutdown in <code>onclose</code> handler ensures clean WebSocket termination.</div>
+</div>
+
+<!-- Problem 10: Silent API Failures -->
+<div class="issue medium">
+  <span class="label medium">MEDIUM</span>
+  <h3>10. Slack Returns 200 OK for Invalid Payloads (Silent Failures)</h3>
+  <div class="symptom"><strong>Symptoms:</strong> Message appears as plain text instead of Block Kit blocks. No error, no warning in visible response — <code>ok: true</code> and 200 returned. Blocks silently stripped server-side.</div>
+  <div class="cause"><strong>Root cause:</strong> Slack's API does not validate Block Kit or message payloads at send time. Invalid structures are silently stripped. Only indication is <code>warning</code> field buried in <code>response_metadata.warnings</code> that most developers never check.</div>
+  <div class="solution"><strong>Solution:</strong> Always log full API response, specifically <code>response.warning</code> and <code>response.response_metadata.messages</code>. Validate payloads before sending. Use Block Kit Builder (api.slack.com/block-kit-builder) to test visually.</div>
+  <div class="casey"><strong>Casey relevance:</strong> Low risk — Casey sends plain text messages via <code>chat.postMessage</code>. If Block Kit is added later, validate payloads first.</div>
+</div>
+
+<!-- Problem 11: LLM Cost Spiral -->
+<div class="issue high">
+  <span class="label high">HIGH</span> <span class="label medium">Hit by Casey</span>
+  <h3>11. LLM-Powered Bot Cost Spiral &amp; Credit Exhaustion</h3>
+  <div class="symptom"><strong>Symptoms:</strong> Bot responds to every message including its own, creating infinite reply loops. LLM API costs spike uncontrollably. Bot burns through credits in hours. Falls back to generic "I'm a bot" responses when credits run out.</div>
+  <div class="cause"><strong>Root cause:</strong> (a) Message listeners without guardrails process all channel activity, including bot's own messages, creating loops. (b) Each LLM call fetches message context via <code>conversations.history</code>, multiplying API consumption. (c) Long threads with full context balloon token usage. (d) API key runs out of credits — bot silently degrades.</div>
+  <div class="solution"><strong>Solution:</strong> Ignore bot's own messages (check <code>event.user !== botUserId</code>). Scope to <code>app_mention</code> not <code>message.channels</code>. Cap context window (last 10 messages). Set hard cost limits on LLM API keys. Log and alert on cost anomalies. Implement per-user/per-channel cooldowns.</div>
+  <div class="casey"><strong>Casey relevance:</strong> This was the most recent issue. Both Anthropic keys had zero credits, causing Casey to fall back to generic responses. Switched to DeepSeek API key with credits. Added proper self-message filtering and context window of 10 messages.</div>
+</div>
+
+<h2>Solution Reference Matrix</h2>
+<table style="width:100%;border-collapse:collapse;margin:20px 0;font-size:0.9em;">
+<thead>
+<tr style="background:#16213e;color:#fff;">
+  <th style="padding:10px;text-align:left;">Problem</th>
+  <th style="padding:10px;text-align:left;">Severity</th>
+  <th style="padding:10px;text-align:left;">Quick Fix</th>
+  <th style="padding:10px;text-align:left;">Casey?</th>
+</tr>
+</thead>
+<tbody>
+<tr style="background:#fff;"><td style="padding:10px;">app_mention not firing</td><td style="padding:10px;">CRITICAL</td><td style="padding:10px;">Subscribe event + add scope + reinstall</td><td style="padding:10px;">✅</td></tr>
+<tr style="background:#f8f8fc;"><td style="padding:10px;">missing_scope errors</td><td style="padding:10px;">CRITICAL</td><td style="padding:10px;">Add scopes in manifest + reinstall app</td><td style="padding:10px;">✅</td></tr>
+<tr style="background:#fff;"><td style="padding:10px;">No events after verification</td><td style="padding:10px;">CRITICAL</td><td style="padding:10px;">Subscribe Bot Events + OAuth install</td><td style="padding:10px;">✅</td></tr>
+<tr style="background:#f8f8fc;"><td style="padding:10px;">Socket Mode disconnects</td><td style="padding:10px;">HIGH</td><td style="padding:10px;">Handle disconnect + reconnect logic</td><td style="padding:10px;">✅</td></tr>
+<tr style="background:#fff;"><td style="padding:10px;">API rate limits (429)</td><td style="padding:10px;">HIGH</td><td style="padding:10px;">Exponential backoff + token bucket</td><td style="padding:10px;">🔮</td></tr>
+<tr style="background:#f8f8fc;"><td style="padding:10px;">Bot not in channel</td><td style="padding:10px;">HIGH</td><td style="padding:10px;"><code>/invite @bot</code> in each channel</td><td style="padding:10px;">✅</td></tr>
+<tr style="background:#fff;"><td style="padding:10px;">Token revoked on reinstall</td><td style="padding:10px;">HIGH</td><td style="padding:10px;">Update all token references</td><td style="padding:10px;">⚠️</td></tr>
+<tr style="background:#f8f8fc;"><td style="padding:10px;">3-second ACK timeout</td><td style="padding:10px;">HIGH</td><td style="padding:10px;">Ack first, process async</td><td style="padding:10px;">✅</td></tr>
+<tr style="background:#fff;"><td style="padding:10px;">Multiple instances clashing</td><td style="padding:10px;">MEDIUM</td><td style="padding:10px;">Single instance + graceful shutdown</td><td style="padding:10px;">✅</td></tr>
+<tr style="background:#f8f8fc;"><td style="padding:10px;">Silent API failures</td><td style="padding:10px;">MEDIUM</td><td style="padding:10px;">Log response_metadata.warnings</td><td style="padding:10px;">🔮</td></tr>
+<tr style="background:#fff;"><td style="padding:10px;">LLM cost spiral</td><td style="padding:10px;">HIGH</td><td style="padding:10px;">Filter self-messages + cap context</td><td style="padding:10px;">✅</td></tr>
+</tbody>
+</table>
+<p style="text-align:center;color:#888;">✅ = Resolved &nbsp; ⚠️ = Mitigated &nbsp; 🔮 = Not yet needed (pre-scale)</p>
+
+<h2>Community Sources</h2>
+<ul style="margin-left:20px;">
+  <li><strong>r/Slack</strong> — "bot help" (u/zyang87), "Unable to read messages" (u/Upper_Beyond3689), "Request URL not receiving events" (u/kajajaja, 5 pts)</li>
+  <li><strong>r/Slack</strong> — "Slack Work Objects silent failures" (u/Quirky_Researcher, 15 pts), "Rate limit changes Sept 2024" (11 pts)</li>
+  <li><strong>r/node</strong> — "Block Kit validator" (u/morphine_season, 2 pts)</li>
+  <li><strong>r/Slack</strong> — "n8n CV assistant 3 lessons" (u/easybits_ai), "can't delete ack response" (u/aeonpsych)</li>
+  <li><strong>Stack Overflow</strong> — #76760627, #42372079, #77855796, #74069513, #63164683, #75779652, #51723808, #34896954, #44048855</li>
+  <li><strong>GitHub</strong> — slackapi/node-slack-sdk #1654, #2094, #2138, #2254, #2443; slackapi/java-slack-sdk #1223</li>
+  <li><strong>Dev.to</strong> — "Mom, a Slack bot powered by an LLM" by Ramu Narasinga</li>
+  <li><strong>Slack Docs</strong> — api.slack.com/apis/events-api, rate-limits, socket-mode, changelog/2025/05/29</li>
+</ul>
+
+<footer>
+  <p>Hermes Agent SOP v1.0 — Compiled June 28, 2026 from Reddit, Stack Overflow, GitHub, Slack Docs, and Casey production deployment</p>
+  <p>Part of the MetroPrints Agentic Centre — <code>~/Projects/metroprints/docs/</code></p>
+</footer>
+
+</div>
+</body>
+</html>

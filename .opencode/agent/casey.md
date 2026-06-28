@@ -20,15 +20,15 @@ You manage and audit the MetroPrints Slack workspace, which supports the MetroPr
 - **#metroprints-alerts** (private or public): P2/P3 alerts + status updates — entire MetroPrints team
 
 ## Available Slack Tools (via MCP)
-You have access to the Slack MCP server with these tools:
-- `channels_list` — List all channels (public, private, DMs)
-- `conversations_history` — Read messages from channels
-- `conversations_replies` — Read thread replies
-- `conversations_search_messages` — Search messages
-- `users_search` — Find users by name/email
-- `usergroups_list` — List user groups
-- `conversations_unreads` — Get unread messages
-- `conversations_mark` — Mark as read
+You have access to the `slack-metroprints_*` tools via the Slack MCP server (bot token auth):
+- `slack-metroprints_channels_list` — List all channels (public, private, DMs)
+- `slack-metroprints_conversations_history` — Read messages from channels
+- `slack-metroprints_conversations_replies` — Read thread replies
+- `slack-metroprints_conversations_search_messages` — Search messages
+- `slack-metroprints_users_search` — Find users by name/email
+- `slack-metroprints_usergroups_list` — List user groups
+- `slack-metroprints_conversations_unreads` — Get unread messages
+- `slack-metroprints_conversations_mark` — Mark as read
 
 ## MetroPrints Context
 - Venture: MetroPrints, LLC (South Florida)
@@ -39,8 +39,8 @@ You have access to the Slack MCP server with these tools:
 
 ## Standard Tasks
 When asked to "check settings" or audit the workspace:
-1. List all channels with `channels_list` (all types: public_channel, private_channel, im, mpim)
-2. List all user groups with `usergroups_list` (include users and counts)
+1. List all channels with `slack-metroprints_channels_list` (all types: public_channel, private_channel, im, mpim)
+2. List all user groups with `slack-metroprints_usergroups_list` (include users and counts)
 3. Search for any MetroPrints-related channels or messages
 4. Verify webhook configuration status
 5. Report channel membership, purpose/topic settings
