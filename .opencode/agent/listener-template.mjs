@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { resolveSpawns } from "../shared/subagent.mjs";
 
 const XAPP = process.env.SLACK_XAPP_TOKEN || "";
 const XOXB = process.env.SLACK_XOXB_TOKEN || "";
@@ -254,24 +255,74 @@ async function checkWebsite() {
   }
 }
 
-// ── Email Check (Gmail IMAP via HTTP) ────────────────
+// ── Email Check (Gmail IMAP via imapflow) ─────────────
 
 const EMAIL_USER = process.env.METROPRINTS_EMAIL || "";
 const EMAIL_PASS = process.env.METROPRINTS_EMAIL_PASS || "";
+const EMAIL_ACTIVE = !!(EMAIL_USER && EMAIL_PASS);
 
-// Note: Gmail requires an App Password (not account password) for IMAP.
-// Generate at: https://myaccount.google.com/apppasswords
-// Casey uses this to scan for FBI Email #2 confirmations.
-// If App Password not set up, email monitoring will log an error and skip.
+let imapClient = null;
+
+async function getImapClient() {
+  if (!EMAIL_ACTIVE) return null;
+  if (imapClient) return imapClient;
+
+  try {
+    const { ImapFlow } = await import("imapflow");
+    imapClient = new ImapFlow({
+      host: "imap.gmail.com",
+      port: 993,
+      secure: true,
+      auth: { user: EMAIL_USER, pass: EMAIL_PASS },
+      logger: false,
+    });
+    await imapClient.connect();
+    console.log("[casey] IMAP connected");
+    return imapClient;
+  } catch (e) {
+    console.error("[casey] IMAP connection failed:", e.message);
+    imapClient = null;
+    return null;
+  }
+}
 
 async function checkRecentEmails(subjectFilter = "FBI", maxResults = 5) {
-  if (!EMAIL_USER || !EMAIL_PASS) {
+  if (!EMAIL_ACTIVE) {
     console.log("[casey] Email monitoring skipped — no credentials");
     return { ok: false, error: "no_credentials", results: [] };
   }
-  // Gmail IMAP via fetch is complex — simplified search via Gmail API planned
-  // For now, returns a notice that email requires Gmail API or App Password setup
-  return { ok: false, error: "gmail_api_required", results: [], note: "Requires Gmail API OAuth or Google App Password for IMAP. Generate at myaccount.google.com/apppasswords" };
+
+  const client = await getImapClient();
+  if (!client) {
+    return { ok: false, error: "imap_connection_failed", results: [], note: "Set METROPRINTS_EMAIL and METROPRINTS_EMAIL_PASS env vars with a Gmail App Password" };
+  }
+
+  try {
+    await client.mailboxOpen("INBOX");
+    const messages = [];
+
+    for await (const msg of client.fetch(
+      { seen: false },
+      { source: true, envelope: true, bodyStructure: true }
+    )) {
+      if (messages.length >= maxResults) break;
+      const subject = msg.envelope?.subject || "";
+      if (subject.toLowerCase().includes(subjectFilter.toLowerCase())) {
+        messages.push({
+          uid: msg.uid,
+          subject,
+          from: msg.envelope?.from?.[0]?.address || "unknown",
+          date: msg.envelope?.date || new Date(),
+          snippet: msg.source?.toString().substring(0, 200) || "",
+        });
+      }
+    }
+
+    return { ok: true, results: messages };
+  } catch (e) {
+    console.error("[casey] IMAP fetch error:", e.message);
+    return { ok: false, error: e.message, results: [] };
+  }
 }
 
 const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY || "";
@@ -481,11 +532,16 @@ async function handle(channel, user, text, thread) {
     let reply;
     const llmReply = await think(folded);
     if (llmReply) {
-      reply = llmReply;
-      console.log(`[casey] LLM reply for ${userName}`);
+      // Resolve sub-agent spawn markers: [SPAWN:role]prompt[/SPAWN]
+      const resolved = await resolveSpawns(llmReply, {
+        apiKey: process.env.DEEPSEEK_API_KEY,
+        parentAgent: "Casey",
+      });
+      reply = resolved.text;
+      console.log(`[casey] LLM reply for ${userName}${resolved.spawned ? ` (${resolved.spawned} sub-agents spawned)` : ""}`);
     } else {
-      // Fallback if LLM unavailable
-      reply = `Hey ${userName.split(" ")[0]}! I'm Casey, the MetroPrints workspace admin. I can help with workspace audits, alerts, channels, and service checks. What do you need?`;
+      // Fallback if LLM unavailable — deploy script replaces {{AGENT_FALLBACK}}
+      reply = `Hey ${userName.split(" ")[0]}! {{AGENT_FALLBACK}}`;
       console.log(`[casey] Fallback reply (no LLM)`);
     }
 
@@ -493,6 +549,8 @@ async function handle(channel, user, text, thread) {
       channel,
       text: reply,
       thread_ts: thread,
+      unfurl_links: false,
+      unfurl_media: false,
     });
     trackThread(thread, channel);
     console.log(`[casey] Replied in ${channel} | tracked thread=${thread}`);
@@ -503,6 +561,8 @@ async function handle(channel, user, text, thread) {
         channel,
         text: "Sorry, something went wrong. Try again?",
         thread_ts: thread,
+        unfurl_links: false,
+        unfurl_media: false,
       });
       trackThread(thread, channel);
     } catch {}
@@ -688,6 +748,8 @@ async function postAlert(text, userName) {
   await slack("chat.postMessage", {
     channel: alertChannel,
     text: `🚨 *${level} Alert* from ${userName}:\n> ${message || "(no details)"}`,
+    unfurl_links: false,
+    unfurl_media: false,
   });
   return `Alert posted to ${channelName}: ${message || "(no details)"}`;
 }

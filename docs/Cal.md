@@ -35,6 +35,10 @@ None. Cal is a net-new agent, not a consolidation of any prior MetroPrints agent
 - Flags scheduling conflicts, gaps, or overbooked windows
 - Reports completed and missed appointments back to [[Casey]] so the case record stays current
 
+## Sub-agent spawning
+
+Cal can spawn ephemeral sub-agents for parallel scheduling tasks — concurrent appointment booking across multiple clients, route optimization for multi-stop days, bulk reminder sends — and aggregate their results. Sub-agent spawning, swarm orchestration, and capability propagation are shared authority; Cal holds these natively, not by delegation.
+
 ## Cadence & triggers
 
 - **Event-driven:** new scheduling request from [[Casey]] when a case needs a Live Scan appointment
@@ -51,7 +55,7 @@ None. Cal is a net-new agent, not a consolidation of any prior MetroPrints agent
 ## Coordination with other agents
 
 - **[[Casey]]**: primary upstream/downstream relationship — Casey hands Cal new scheduling requests when a case needs a Live Scan visit; Cal reports appointment outcomes (completed, missed, rescheduled) back to Casey for the case record.
-- **[[Metro]]**: appointment volume and utilization can roll into Metro's pipeline-health reporting if that becomes useful, though Cal's primary consumer is Casey, not Metro.
+- **[[Metro]]**: appointment volume and utilization can roll into Metro's pipeline-health reporting if that becomes useful, though Cal's primary consumer is Casey, not Metro. Cal holds full swarm authority natively.
 - **[[Penny]]**: a completed appointment is one of the signals that a case has reached a billable state, though Penny audits the resulting transaction, not the appointment itself.
 
 ## Why this is an agent (not Make)

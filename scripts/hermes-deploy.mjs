@@ -45,6 +45,19 @@ code = code.replace(
 // Replace start message
 code = code.replace(/Starting Casey Socket Mode listener/, `Starting ${name} Socket Mode listener`);
 
+// Replace fallback text (Casey's hardcoded identity line) with the new agent's own
+const fallbackDesc = description || `${name} — MetroPrints agent`;
+code = code.replace(
+  /I'm Casey, the MetroPrints workspace admin\. I can help with workspace audits, alerts, channels, and service checks\. What do you need\?/g,
+  `I'm ${name}, the MetroPrints ${fallbackDesc.toLowerCase()}. What do you need?`
+);
+// Replace any other literal "Casey" identity references the template may still carry
+code = code.replace(/I'm Casey,/g, `I'm ${name},`);
+code = code.replace(/parentAgent: "Casey"/g, `parentAgent: "${name}"`);
+
+// Replace legacy bot ID references
+code = code.replace(/@casey-x/g, "@Casey");
+
 const listenerPath = join(AGENTS_DIR, "listener.mjs");
 writeFileSync(listenerPath, code);
 console.log(`📝 ${listenerPath}`);
@@ -115,11 +128,11 @@ const manifest = {
   },
   oauth_config: {
     scopes: {
-      bot: ["app_mentions:read","channels:history","channels:read","chat:write","commands","groups:history","groups:read","im:history","im:read","im:write","reactions:read","reactions:write","users:read"]
+      bot: ["app_mentions:read","assistant:write","channels:history","channels:join","channels:manage","channels:read","chat:write","commands","files:read","files:write","groups:history","groups:read","groups:write","im:history","im:read","im:write","reactions:read","reactions:write","usergroups:read","users:read"]
     }
   },
   settings: {
-    event_subscriptions: { bot_events: ["app_home_opened","app_mention","message.channels","message.groups","message.im","message.mpim"] },
+    event_subscriptions: { bot_events: ["app_home_opened","app_mention","message.channels","message.groups","message.im"] },
     interactivity: { is_enabled: true },
     socket_mode_enabled: true,
     token_rotation_enabled: false

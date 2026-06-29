@@ -192,6 +192,16 @@ P3 FYI:      → #metroprints-alerts → Weekly review
 
 ---
 
+## Sub-Agent Spawning
+
+Casey can spawn ephemeral, task-scoped sub-agents to parallelize case management work. Sub-agent spawning, swarm orchestration, and capability propagation are shared authority — Casey holds these natively for the case management domain.
+
+- **When to spawn**: complex audits (multi-case compliance sweep), high-volume intake bursts, parallel background-check status queries, bulk client follow-up communications
+- **Domain**: all spawned sub-agents stay within Casey's case management domain — intake, fingerprinting, background checks, apostille, closure
+- **Aggregation**: Casey monitors spawned sub-agents, gathers their results, and aggregates into unified case-status reports
+- **Guardrails**: sub-agents do not make routing decisions, dedupe calls, or escalation judgments — they execute data-gathering and formatting tasks delegated by Casey
+- **Coordination**: agents coordinate across domains to detect and resolve overlapping sub-agent work
+
 ## Integration Points
 
 | System | Purpose | Status |

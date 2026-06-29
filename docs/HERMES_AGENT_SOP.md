@@ -44,6 +44,19 @@ This document is the complete Standard Operating Procedure for creating, configu
 3. Name: `<AgentName>` (e.g., Casey)
 4. Pick your workspace
 
+### OAuth Scope Decision Matrix
+
+Choose scopes based on what the agent actually needs. Start minimal. Elevated scopes go in `bot_optional` so workspace admins can grant or deny them during install.
+
+| Risk | Scopes | When Needed |
+|---|---|---|
+| **Low** — always safe | `app_mentions:read`, `chat:write`, `channels:read`, `commands`, `users:read`, `usergroups:read` | Every agent |
+| **Medium** — read-only data | `channels:history`, `groups:history`, `groups:read`, `im:history`, `im:read`, `im:write`, `files:read`, `reactions:read` | Agents that read messages in channels/DMs |
+| **High** — write/management (use optional) | `files:write`, `reactions:write`, `channels:join`, `assistant:write` | Only if agent must write files or manage reactions |
+| **Critical** — structural changes (use optional, audit quarterly) | `channels:manage`, `groups:write` | Only Casey (workspace admin agent) |
+
+**Rule**: If the agent can still function without a scope, it belongs under `bot_optional`. If the agent is non-functional without it, keep it under `bot`.
+
 ### App Configuration (Manifest)
 
 Use this manifest to configure everything at once. Go to **Features → App Manifest** and paste:
@@ -70,25 +83,27 @@ Use this manifest to configure everything at once. Go to **Features → App Mani
     "scopes": {
       "bot": [
         "app_mentions:read",
-        "assistant:write",
         "channels:history",
-        "channels:join",
-        "channels:manage",
         "channels:read",
         "chat:write",
         "commands",
         "files:read",
-        "files:write",
         "groups:history",
         "groups:read",
-        "groups:write",
         "im:history",
         "im:read",
         "im:write",
         "reactions:read",
-        "reactions:write",
         "usergroups:read",
         "users:read"
+      ],
+      "bot_optional": [
+        "assistant:write",
+        "channels:join",
+        "channels:manage",
+        "files:write",
+        "groups:write",
+        "reactions:write"
       ]
     }
   },

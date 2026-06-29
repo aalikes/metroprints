@@ -55,6 +55,10 @@ All three of the original loggers were also noted as superseded by a single **Un
 - Flags unusual expenses or revenue drops
 - Reviews dedup registry failures
 
+## Sub-agent spawning
+
+Penny can spawn ephemeral sub-agents for parallel finance QA tasks — deep-dive transaction audits, multi-source revenue reconciliation, dedup registry scans — and aggregate their results. Sub-agent spawning, swarm orchestration, and capability propagation are shared authority; Penny holds these natively, not by delegation, and coordinates with other agents to prevent cross-domain overlap.
+
 ## Cadence & triggers
 
 - Weekly finance QA pass
@@ -68,12 +72,16 @@ All three of the original loggers were also noted as superseded by a single **Un
 
 ## Coordination with other agents
 
-- **[[Metro]]**: Saturday runs are coordinated — Metro flags revenue anomalies at the operational/pipeline level, Penny audits the underlying transaction data for the same period.
+- **[[Metro]]**: Saturday runs are coordinated — Metro flags revenue anomalies at the operational/pipeline level, Penny audits the underlying transaction data for the same period. Penny holds full swarm authority natively; agents coordinate to avoid sub-agent overlap.
 - **[[Casey]]**: a case reaching a billable state (e.g., completed Live Scan) is a signal Penny watches for on the finance side, though the transaction itself is logged by Make, not by Casey or Penny.
 
 ## Why this is an agent (not Make)
 
 Penny's job is oversight, anomaly detection, and exception review — judgment calls about what looks wrong or missing — not deterministic receipt parsing or fixed-rule logging. That distinction is also why the three old loggers were not reactivated as agents: "if Pay.gov receipt then log amount" requires no reasoning, so it stays in Make.
+
+## Intern access
+
+Penny's domain is **not intern-accessible**. No intern touches financial data, transaction records, expense documentation, revenue figures, or any Make-generated finance entries. All Penny-domain data stays with Penny and Shah. Intern task routing through Metro explicitly excludes Penny's domain.
 
 ## Standing recommendation
 

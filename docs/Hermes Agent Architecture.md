@@ -43,24 +43,57 @@ The original Hermes model defined 5 functional roles, each its own agent. That m
 | 3 | [[Penny]] | Finance QA, anomaly review, dedupe checks, Make oversight | Weekly QA; Saturday revenue/anomaly pass (coordinated with Metro) |
 | 4 | [[Cal]] | Mobile Live Scan appointment scheduling, technician routing, reminders | Event-driven (new request from Casey) + daily AM schedule review + reminder sends |
 
+## Sub-Agent & Swarm Capabilities
+
+Every Hermes agent can spawn ephemeral, task-scoped sub-agents through the OpenCode sub-agent interface. Swarm orchestration and capability propagation are shared across all 4 agents — no single agent holds exclusive authority.
+
+### How it works
+
+- **Spawning**: each agent spins up a sub-agent (via `mode: subagent`) to handle complex, parallelizable tasks without blocking its own event loop. Sub-agents are short-lived, single-task workers that report results back to their spawning agent.
+- **Swarm orchestration (all agents)**: when a task benefits from parallel decomposition, any agent can spawn multiple sub-agents concurrently, monitor all of them, and aggregate results into a unified output. An ops snapshot, a multi-case compliance sweep, a finance audit, or a scheduling burst — whatever the task, the owning agent orchestrates its own swarm.
+- **Domain isolation**: sub-agents stay within their spawning agent's domain. Casey's sub-agents handle case intake/triage work; Penny's sub-agents handle finance QA; Cal's sub-agents handle scheduling. Cross-domain tasks can be decomposed and dispatched peer-to-peer — any agent can hand a sub-task to another agent's domain.
+- **Lifetime**: sub-agents are ephemeral — created for a specific task, run to completion, and torn down. No sub-agent persists beyond its assigned task.
+- **Capability propagation**: sub-agent spawning is a peer capability. Any Hermes agent can grant spawning capability to another agent or new sub-system. All 4 agents have this authority.
+
+### Who can do what
+
+| Capability | Metro | Casey | Penny | Cal |
+|---|---|---|---|---|---|
+| Spawn sub-agents for own tasks | Yes | Yes | Yes | Yes |
+| Swarm orchestrate (multiple concurrent) | Yes | Yes | Yes | Yes |
+| Monitor sub-agents across domains | Yes | Yes | Yes | Yes |
+| Grant spawning to another agent | Yes | Yes | Yes | Yes |
+
+### Guardrails
+
+- Sub-agents do NOT create Slack bots, Slack apps, or persistent services
+- Sub-agents do NOT make judgment calls — their spawning agent already made the call to delegate
+- Agents coordinate to detect duplicate or conflicting sub-agents across domains and flag them
+- All sub-agent output flows back through the spawning agent — sub-agents never communicate directly with Shah, Slack, or Notion
+- Sub-agents remain in ephemeral mode with no persistence between invocations
+
 ## Interns
 
-MetroPrints uses interns for hands-on, supervised support across all 4 agent domains. Interns are the human execution layer; agents retain the judgment calls (routing, escalation tier, anomaly flags, categorization) and final review stays with Shah.
+MetroPrints uses interns for hands-on, supervised support across 3 agent domains: Metro, Casey, and Cal. [[Penny]]'s finance domain is not intern-accessible — financial data, transaction records, and revenue figures are restricted to Penny and Shah. Interns are the human execution layer; agents retain the judgment calls (routing, escalation tier, anomaly flags, categorization) and final review stays with Shah.
+
+[[Metro]] is the **intern coordination hub** — all intern task assignment, tracking, completion routing, and capacity reporting flows through Metro. Agents identify intern-eligible tasks; Metro assigns them, tracks progress, and routes completed work back to the originating agent for sign-off.
 
 | Agent domain | Intern responsibilities |
-|---|---|
-| [[Metro]] | Drafting blog/FAQ content from Metro's approved talking points; basic Notion data hygiene (tagging, formatting) under existing SOPs; assisting with knowledge-base updates |
-| [[Casey]] | Data entry support for new client/case records; routine client follow-up communications; document collection — non-judgment intake tasks only, not dedupe or routing decisions |
-| [[Penny]] | Organizing and labeling receipts/expense documentation before it's logged via Make; flagging anything unclear for Penny's review rather than making the categorization call |
-| [[Cal]] | Confirming appointments by phone/text per Cal's schedule; calendar data entry; relaying client reschedule requests for Cal to process |
+|---|---|---|
+| [[Metro]] | Drafting blog/FAQ content from Metro's approved talking points; basic Notion data hygiene (tagging, formatting) under existing SOPs; assisting with knowledge-base and skill-file updates; content opportunity research; SOP formatting and cross-referencing |
+| [[Casey]] | Data entry for new client/case records; routine (templated) client follow-up communications; document collection and organization; case file archiving; intake form pre-screening (not dedupe, not routing decisions) |
+| [[Cal]] | Confirming appointments by phone/text per Cal's schedule; calendar data entry; relaying client reschedule requests (not deciding); technician availability data entry; route data entry (not route optimization) |
+
+**[[Penny]]**'s domain is explicitly excluded — no intern touches financial data, transaction records, expense documentation, or revenue figures.
 
 **Guardrails**
 
 - Interns do not perform the Live Scan/fingerprinting capture itself or any FDLE-regulated compliance step — that stays with authorized staff under MetroPrints' FDLE Live Scan authorization.
 - Interns execute tasks an agent has already classified or assigned; they don't make the judgment calls that justify keeping that work in an agent rather than a script.
 - Shah reviews intern work product before it's treated as final, the same as any other human-in-the-loop step.
-
-*This breakdown is a first-pass proposal, not a confirmed job description — check it against what interns are actually doing day to day and adjust.*
+- Penny's domain (finance, transactions, revenue, expenses, receipts) is not intern-accessible under any circumstance — Penny's data stays with Penny and Shah.
+- Metro enforces guardrail compliance at the assignment stage: if an agent attempts to route a task to an intern that crosses a guardrail boundary (including any Penny-domain task), Metro intercepts and returns it to the agent for reclassification.
+- Metro maintains the active intern workload register so no intern is double-assigned or over capacity.
 
 ## Consolidation map (full lineage back to original agents/automations)
 
@@ -96,6 +129,8 @@ The original 5-role model used generic names: *Hermes Ops Intelligence Agent*, *
 - **Metro ↔ Penny**: Saturday runs are coordinated — Metro flags revenue anomalies at the ops level, Penny audits the underlying transaction data for the same period.
 - **Casey → Metro**: case volume, intake mix, and stalled-case signals Casey surfaces day-to-day roll up into Metro's higher-altitude, lower-frequency reporting.
 - **Cal → Penny**: a completed appointment is one signal that a case has reached a billable state; Penny audits the resulting Make-logged transaction, not the appointment itself.
+- **Metro → all agents**: peer swarm authority — every agent can spawn, orchestrate, monitor, and grant sub-agent capability. Agents coordinate to prevent inter-domain sub-agent conflicts.
+- **Metro → interns**: Metro is the single coordination point — agents route intern-eligible tasks to Metro, Metro assigns and tracks, interns report completion/blockers to Metro, Metro routes finished work back to the originating agent.
 - **Operations Live State page**: written/updated by Metro, intended as the shared snapshot other agents and reports read from instead of re-querying Notion databases directly.
 
 ## Why this restructuring, in one line

@@ -633,6 +633,195 @@ openclaw status --deep
 
 ---
 
+## 9. OAuth Scope Management
+
+### Why Scope Audits Matter
+
+Slack bot tokens are broad — every scope on the token is available to every API call. Slack does not support per-channel or per-action scope restriction outside Enterprise Grid. Deployed agents compound the risk: any tool the agent can reach, a prompt injection attacker can reach through the agent.
+
+### Scope Decision Matrix
+
+| Scope | Risk Level | Needed For | Agents That Require It |
+|---|---|---|---|
+| `app_mentions:read` | Low | Receiving @mentions | All |
+| `chat:write` | Medium | Posting messages | All |
+| `channels:read` | Low | Listing channels | All |
+| `channels:history` | Medium | Reading channel messages | All |
+| `groups:history` | Medium | Reading private channel messages | Metro, Casey, Penny, Cal |
+| `groups:read` | Low | Seeing private channel metadata | All |
+| `im:history` | Medium | Reading DMs | All |
+| `im:read` | Low | DM metadata | All |
+| `im:write` | Medium | Sending DMs | All |
+| `commands` | Low | Slash commands | All |
+| `users:read` | Low | Looking up user profiles | All |
+| `files:read` | Medium | Reading shared files | Metro, Casey, Penny |
+| `files:write` | **High** | Uploading files | Casey only (optional) |
+| `reactions:read` | Low | Reading emoji reactions | All |
+| `reactions:write` | **High** | Adding/removing reactions | Optional on all |
+| `channels:join` | **High** | Joining public channels | Optional on all |
+| `channels:manage` | **Critical** | Creating/archiving channels | Casey only (optional) |
+| `groups:write` | **Critical** | Creating/editing private channels | Casey only (optional) |
+| `usergroups:read` | Low | Reading user group info | Admin agents |
+| `assistant:write` | Medium | Assistants framework | Optional on all |
+
+### How It's Applied (Current)
+
+| Agent | Mandatory Scopes | Optional Scopes | Notes |
+|---|---|---|---|
+| Metro | 13 (minimal ops) | 6 (`channels:manage`, `groups:write`, etc.) | Moved write/management scopes to optional |
+| Casey | 13 (admin core) | 5 (`channels:manage`, `files:write`, etc.) | Already using optional scopes — baseline correct |
+| Penny | 13 (finance core) | 6 (`channels:manage`, `groups:write`, etc.) | Moved write/management scopes to optional |
+| Cal | 12 (scheduling core) | None | Already minimal — correct for draft agent |
+
+### Quarterly Scope Audit Procedure
+
+Every 3 months, for each agent:
+
+```bash
+# 1. Export current scopes from Slack API
+curl -sS -H "Authorization: Bearer xoxb-..." https://slack.com/api/apps.manifest.export?app_id=A... \
+  | jq '.manifest.oauth_config.scopes' > scope-audit-$(date +%Y%m).json
+
+# 2. Review against agent's actual API calls in logs
+tail -10000 ~/Library/Logs/com.metroprints.<agent>.listener.log \
+  | grep -oP '(?<=api/)\w+\.\w+' | sort | uniq -c | sort -rn > <agent>-api-usage.txt
+
+# 3. Remove unused scopes from manifest
+# 4. Run: openclaw doctor --fix  then restart gateway
+```
+
+### Optional Scopes: The Pattern
+
+Mark elevated scopes as `bot_optional` in the manifest. Users see them during installation and can grant or deny individually:
+
+```json
+"oauth_config": {
+  "scopes": {
+    "bot": [
+      "app_mentions:read",
+      "chat:write",
+      "channels:read",
+      "users:read"
+    ],
+    "bot_optional": [
+      "channels:manage",
+      "files:write",
+      "reactions:write"
+    ]
+  }
+}
+```
+
+**Rule of thumb**: If an agent still functions without a scope, it belongs in `bot_optional`. If the agent is non-functional without it, it stays in `bot`.
+
+---
+
+## 10. Security Best Practices for Deployed Agents
+
+### Prompt Injection Defense
+
+Any message in a channel the bot reads can contain instructions designed to manipulate it. Treat all channel content as untrusted.
+
+**Defenses:**
+
+```javascript
+// 1. Structural separation in system prompt
+const SYSTEM_PROMPT = `[SYSTEM BOUNDARY START]
+You are Casey, MetroPrints admin agent.
+[USER INPUT FOLLOWS AFTER BOUNDARY]
+[SYSTEM BOUNDARY END]
+
+User message: ${text}`;
+
+// 2. Strip instruction-shaped patterns from user input before sending to LLM
+function sanitizeInput(text) {
+  return text
+    .replace(/ignore\s+(all\s+)?previous\s+instructions/gi, '[FILTERED]')
+    .replace(/you\s+are\s+now\s+a/gi, '[FILTERED]')
+    .replace(/system\s*:\s*/gi, '[FILTERED]')
+    .replace(/\bact\s+as\b/gi, '[FILTERED]')
+    .replace(/forget\s+(everything|all|your)/gi, '[FILTERED]')
+    .replace(/new\s+instructions?\s*:/gi, '[FILTERED]')
+    .replace(/admin\s+(mode|access|override)/gi, '[FILTERED]');
+}
+
+// 3. Per-user rate limiting
+const userRateLimits = new Map();
+function isRateLimited(user, limit = 10, windowMs = 60000) {
+  const now = Date.now();
+  const history = userRateLimits.get(user) || [];
+  const recent = history.filter((ts) => now - ts < windowMs);
+  userRateLimits.set(user, [...recent, now]);
+  return recent.length >= limit;
+}
+```
+
+### DM vs Channel Response Sensitivity
+
+Messages sent to a channel are visible to **everyone** in that channel. The agent must never echo sensitive data to a channel:
+
+```javascript
+// Before posting to a channel, verify it's a DM (starts with D) or redact sensitive fields
+async function safeReply(channel, user, text, thread) {
+  const isDM = channel.startsWith("D");
+
+  if (!isDM) {
+    // In channels: redact PII, account numbers, internal data before posting
+    text = text.replace(/\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g, "[REDACTED]");
+    text = text.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[EMAIL]");
+    text = text.replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, "[PHONE]");
+  }
+
+  await slack("chat.postMessage", { channel, text, thread_ts: thread });
+}
+```
+
+### PII Redaction Before LLM
+
+Never send raw channel data to external LLM providers without redaction:
+
+```javascript
+function redactPII(text) {
+  return text
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[EMAIL]")
+    .replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, "[PHONE]")
+    .replace(/\b\d{3}[-.]?\d{2}[-.]?\d{4}\b/g, "[SSN]")
+    .replace(/\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g, "[CARD]");
+}
+```
+
+### Token Isolation
+
+Each agent gets its own Slack app with its own xoxb token. This is already configured correctly:
+
+| Agent | Slack App | Bot User |
+|---|---|---|
+| Metro | Dedicated | `U...` (separate) |
+| Casey | Dedicated | `U0BD79D3ZHD` |
+| Penny | Dedicated | `U...` (separate) |
+| Cal | Dedicated | `U...` (separate) |
+
+**Never share an xoxb token across agents.** Most common regret from Slack bot builders: sharing one app across agents creates unresolvable permission conflicts.
+
+### Emergency Kill Switch
+
+For each agent, keep the ability to immediately revoke its token:
+
+```bash
+# Revoke all tokens for an agent
+curl -sS -X POST https://slack.com/api/auth.revoke \
+  -H "Authorization: Bearer xoxb-..." \
+  -d "test=true"
+
+# Or uninstall the app from the workspace (slack.com/apps → OAuth & Permissions → Revoke All Tokens)
+```
+
+### Mandatory Event: Check Signing Secret
+
+Even in Socket Mode, if you ever switch to HTTP Events API, you MUST configure the Signing Secret. Socket Mode's WebSocket connection is authenticated by `xapp` token, so it's implicitly trusted — but HTTP mode requires explicit request verification. Find your Signing Secret under `api.slack.com/apps → Basic Information → App Credentials`.
+
+---
+
 ## Summary: What to Do Right Now (Priority Order)
 
 | # | Action | Impact | Time |
@@ -643,4 +832,6 @@ openclaw status --deep
 | 4 | Replace `#channel-name` with `C...` IDs everywhere | Fixes silent config failures | 5 min |
 | 5 | Run `openclaw plugins install slack` on VPS + `doctor --fix` | Fixes missing plugin | 5 min |
 | 6 | Enable heartbeat monitoring (`intervalMinutes: 15`) | Proactive detection | 5 min |
-| 7 | **Plan**: Consolidate on VPS with HTTP mode | Eliminates 60% of recurring issues | 1-2 days |
+| 7 | Add input sanitization + PII redaction to all listeners | Prompt injection defense | 20 min |
+| 8 | Quarterly scope audit (schedule recurring calendar reminder) | Prevents permission creep | 30 min |
+| 9 | **Plan**: Consolidate on VPS with HTTP mode | Eliminates 60% of recurring issues | 1-2 days |
