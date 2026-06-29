@@ -106,6 +106,26 @@ function cleanText(text) {
   return text.replace(new RegExp(`<@${BOT_USER_ID}>\\s*`, "g"), "").trim();
 }
 
+// 30-minute thread window: once the agent replies in a thread,
+// all subsequent messages in that thread get a response — no @mention needed
+const activeThreads = new Map();
+function trackThread(threadTs) {
+  if (!threadTs) return;
+  activeThreads.set(threadTs, Date.now());
+  setTimeout(() => {
+    const last = activeThreads.get(threadTs);
+    if (last && Date.now() - last >= 30 * 60 * 1000) activeThreads.delete(threadTs);
+  }, 30 * 60 * 1000);
+}
+function isActiveThread(event) {
+  const threadTs = event.thread_ts || event.ts;
+  if (activeThreads.has(threadTs)) {
+    activeThreads.set(threadTs, Date.now());
+    return true;
+  }
+  return false;
+}
+
 async function connect() {
   const url = await getWebSocketUrl();
   console.log(`[agent] Connecting to Slack Socket Mode...`);
@@ -142,6 +162,12 @@ async function connect() {
         if (evt.subtype === "message_changed" || evt.subtype === "message_deleted") return;
 
         const text = evt.text || "";
+
+        // Respond to any message in a thread the agent is already in (30-min window, no @mention needed)
+        if (evt.type === "message" && isActiveThread(evt) && text.trim()) {
+          await handle(evt.channel, evt.user, cleanText(text), evt.ts);
+          return;
+        }
 
         // Handle app_mention (when subscribed on Slack dashboard)
         if (evt.type === "app_mention") {
@@ -185,6 +211,7 @@ async function handle(channel, user, text, thread) {
       text: reply,
       thread_ts: thread,
     });
+    trackThread(thread);
   } catch (e) {
     console.error("[agent] handle error:", e.message);
   }
