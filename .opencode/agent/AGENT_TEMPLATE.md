@@ -291,12 +291,27 @@ When creating a new Slack bot for an agent:
 
 | Step | Where | Detail |
 |------|-------|--------|
-| 1 | api.slack.com/apps → New App | Create from manifest or scratch |
-| 2 | OAuth & Permissions → Bot Token Scopes | `channels:read`, `groups:read`, `users:read`, `usergroups:read`, `channels:history`, `groups:history`, `channels:manage`, `groups:write`, `chat:write`, `commands`, `app_mentions:read` |
-| 3 | Install to Workspace | Get xoxb token |
-| 4 | Basic Information → App-Level Tokens | Generate xapp token with `connections:write` scope |
-| 5 | Socket Mode | Enable (uses xapp token) |
-| 6 | Event Subscriptions | Subscribe to `app_mention` (and `message.channels`, `message.groups` if needed) |
+| 1 | api.slack.com/apps → New App | Create from manifest or scratch — one app per agent |
+| 2 | OAuth & Permissions → Bot Token Scopes | **Required**: `channels:read`, `channels:history`, `groups:read`, `groups:history`, `users:read`, `chat:write`, `commands`, `app_mentions:read`, `im:history`, `im:read`, `im:write`, `files:read`, `reactions:read`, `usergroups:read` |
+| 3 | OAuth & Permissions → Optional Scopes | **Optional** (mark as `bot_optional`): `channels:manage`, `channels:join`, `groups:write`, `files:write`, `reactions:write`, `assistant:write` — only grant if agent actually needs them |
+| 4 | Install to Workspace | Get xoxb token — never share across agents |
+| 5 | Basic Information → App-Level Tokens | Generate xapp token with `connections:write` scope |
+| 6 | Socket Mode | Enable (uses xapp token) — no public URL needed |
+| 7 | Event Subscriptions | Subscribe to `app_mention`, `message.im`, `message.channels`, `message.groups`, `app_home_opened` |
+| 8 | Security hardening | Add input sanitization, PII redaction, rate limiting, and DM-vs-channel guards to listener.mjs |
+| 9 | Quarterly audit | Every 3 months: grep listener logs for `slack.com/api/` calls, remove unused scopes from manifest |
+
+### Scope Audit Command
+
+```bash
+# Run quarterly — lists API methods the agent actually uses
+rg -oP 'slack\.com/api/\K\w+\.\w+' ~/Library/Logs/com.<project>.<agent>.listener.log \
+  | sort | uniq -c | sort -rn
+```
+
+### Scope Principle
+
+**Start minimal, add only what the agent demonstrably needs.** If an agent can function without a scope, it belongs in `bot_optional`. Over-scoping gets flagged by Slack's review process and ~80% of users prefer apps with fewer permissions. Revisit scopes quarterly.
 
 ## Running Agent Commands
 

@@ -476,6 +476,118 @@ Restart OpenCode after MCP config changes.
 
 ---
 
+---
+
+## Step 6: Security Hardening
+
+### Prompt Injection Defense
+
+Every message your agent reads from a channel could contain instructions designed to manipulate it. Apply these defenses in `listener.mjs`:
+
+```javascript
+// Add to listener.mjs — before sending user text to LLM
+
+function sanitizeInput(text) {
+  return text
+    .replace(/ignore\s+(all\s+)?previous\s+instructions/gi, "[FILTERED]")
+    .replace(/you\s+are\s+now\s+a/gi, "[FILTERED]")
+    .replace(/system\s*:\s*/gi, "[FILTERED]")
+    .replace(/\bact\s+as\b/gi, "[FILTERED]")
+    .replace(/forget\s+(everything|all|your)/gi, "[FILTERED]")
+    .replace(/new\s+instructions?\s*:/gi, "[FILTERED]")
+    .replace(/admin\s+(mode|access|override)/gi, "[FILTERED]");
+}
+
+// Use structural separation in system prompt
+const SYSTEM_PROMPT = `[SYSTEM BOUNDARY START]
+You are <AgentName>, <role>.
+[SYSTEM BOUNDARY END]
+
+User (${userName}): ${sanitizeInput(text)}`;
+```
+
+### PII Redaction
+
+Redact sensitive data before sending to external LLM providers:
+
+```javascript
+function redactPII(text) {
+  return text
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[EMAIL]")
+    .replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, "[PHONE]")
+    .replace(/\b\d{3}[-.]?\d{2}[-.]?\d{4}\b/g, "[SSN]")
+    .replace(/\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g, "[CARD]");
+}
+```
+
+### DM vs Channel Response Sensitivity
+
+Channel responses are visible to everyone. DMs are private. The agent must not echo sensitive data to channels:
+
+```javascript
+async function safeReply(channel, user, text, thread) {
+  const isDM = channel.startsWith("D");
+
+  if (!isDM) {
+    // Redact PII before posting to a channel
+    text = text.replace(/\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g, "[REDACTED]");
+    text = text.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[EMAIL]");
+    text = text.replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, "[PHONE]");
+  }
+
+  await slack("chat.postMessage", { channel, text, thread_ts: thread });
+}
+```
+
+### Per-User Rate Limiting
+
+Prevent abuse by rate-limiting per Slack user:
+
+```javascript
+const userRateLimits = new Map();
+function isRateLimited(user, limit = 10, windowMs = 60000) {
+  const now = Date.now();
+  const history = userRateLimits.get(user) || [];
+  const recent = history.filter((ts) => now - ts < windowMs);
+  userRateLimits.set(user, [...recent, now]);
+  return recent.length >= limit;
+}
+
+// In the message handler:
+if (isRateLimited(evt.user, 10, 60000)) {
+  console.log(`[agent] Rate limited user ${evt.user}`);
+  return;
+}
+```
+
+### Quarterly Scope Audit
+
+Every 3 months, review what scopes the agent actually uses vs what was requested:
+
+```bash
+# Extract API methods used from listener logs
+rg -oP 'slack\.com/api/\K\w+\.\w+' ~/Library/Logs/com.metroprints.<agent>.listener.log \
+  | sort | uniq -c | sort -rn
+
+# Compare against manifest — remove any unused scopes
+# Add scopes only if justified by a new feature
+```
+
+### Emergency Kill Switch
+
+If an agent is compromised, immediately revoke its token:
+
+```bash
+curl -sS -X POST https://slack.com/api/auth.revoke \
+  -H "Authorization: Bearer xoxb-<AGENT_TOKEN>" \
+  -d "test=true"
+
+# Alternative: Uninstall from workspace
+# api.slack.com/apps → OAuth & Permissions → Revoke All Tokens
+```
+
+---
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
