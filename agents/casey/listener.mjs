@@ -22,6 +22,8 @@ function isDuplicate(channel, user, ts) {
 // Active threads Casey is participating in (thread_ts → last activity timestamp)
 // Messages in these threads don't need @mention — Casey is already in the conversation
 const activeThreads = new Map();
+const threadCooldowns = new Map(); // thread_ts → last response timestamp
+const KNOWN_BOTS = new Set(["U0BD79D3ZHD","U0BDF2P4SHL","U0BDVLQNWCC","U0BELA72LLQ"]);
 function trackThread(threadTs, channel) {
   if (!threadTs) return;
   activeThreads.set(threadTs, Date.now());
@@ -124,14 +126,27 @@ async function connect() {
         // Respond to any message in a thread Casey is already participating in
         // No @mention needed — she's in the conversation
         if (evt.type === "message" && isActiveThread(evt) && text.trim()) {
-          console.log(`[casey] THREAD: ${evt.channel} thread_ts=${evt.thread_ts || evt.ts} user=${evt.user} text="${text.substring(0, 60)}"`);
-          await handle(evt.channel, evt.user, cleanText(text), evt.ts);
+          const threadKey = evt.thread_ts || evt.ts;
+          const last = threadCooldowns.get(threadKey) || 0;
+          if (Date.now() - last < 30000) return; // 30s cooldown
+          const isBot = KNOWN_BOTS.has(evt.user);
+          console.log(`[casey] THREAD: ${evt.channel} thread_ts=${threadKey} user=${evt.user}${isBot ? " [BOT]" : ""} text="${text.substring(0, 60)}"`);
+          threadCooldowns.set(threadKey, Date.now());
+          await handle(evt.channel, evt.user, cleanText(text), evt.ts, isBot);
           return;
         }
 
         // Debug: log when a message has thread_ts but isn't active thread
         if (evt.type === "message" && evt.thread_ts && !isMentioned(text) && text.trim()) {
           console.log(`[casey] MSG_IN_THREAD (not active): ${evt.channel} thread_ts=${evt.thread_ts} user=${evt.user}`);
+        }
+
+        // Handle DMs — respond to any message (no @mention needed)
+        if (evt.type === "message" && evt.channel.startsWith("D") && text.trim()) {
+          if (isDuplicate(evt.channel, evt.user, evt.ts)) return;
+          console.log(`[casey] DM: ${evt.channel} user=${evt.user} text="${text.substring(0, 80)}"`);
+          await handle(evt.channel, evt.user, cleanText(text), evt.ts);
+          return;
         }
 
         // Handle app_mention event
@@ -424,7 +439,8 @@ When a task requires heavy computation, external API access, or parallel process
 - Execute or delegate — never just explain
 - Reference your cron schedule when applicable: "My 8 AM standup will catch that"
 - If you need external access you don't have, specify exactly what key/scope is needed
-- Be conversational but professional`;
+- Be conversational but professional
+- **When talking to another agent:** Recognize it's an agent, not Shah. Be brief and functional. Don't echo, debate, or loop. Coordinate efficiently and stop.`;
 
 async function think(messages) {
   if (!DEEPSEEK_KEY) return null;
@@ -509,7 +525,7 @@ async function foldContext(messages) {
 
 // ── Handle ───────────────────────────────────────────
 
-async function handle(channel, user, text, thread) {
+async function handle(channel, user, text, thread, isBot = false) {
   try {
     let userName = "there";
     try {
@@ -531,7 +547,9 @@ async function handle(channel, user, text, thread) {
     const messages = [
       { role: "system", content: buildSystemPrompt() },
       ...prior,
-      { role: "user", content: `[${userName}]: ${text}` },
+      { role: "user", content: isBot
+        ? `[${userName} — another MetroPrints agent]: ${text}\n\n(You're talking to another agent. Be concise. Don't repeat yourself. Only respond if you have something substantive to add.)`
+        : `[${userName}]: ${text}` },
     ];
 
     // Auto-fold: summarize oldest messages when context exceeds ~15K tokens

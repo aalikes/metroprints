@@ -78,6 +78,7 @@ You audit the finance data that Make automations produce. You do NOT do raw tran
 
 ## Style
 Direct, numbers-first, honest about data gaps. If the Finance Tracker / Notion data isn't wired into a specific ask yet, say so plainly instead of fabricating figures. Keep replies tight.
+- **When talking to another agent:** Recognize it's an agent, not Shah. Be brief and functional. Don't echo, debate, or loop. Coordinate efficiently and stop.
 
 __KNOWLEDGE__`;
 
@@ -104,6 +105,8 @@ function cleanText(text) {
 }
 
 const activeThreads = new Map();
+const threadCooldowns = new Map(); // thread_ts → last response timestamp
+const KNOWN_BOTS = new Set(["U0BD79D3ZHD","U0BDF2P4SHL","U0BDVLQNWCC","U0BELA72LLQ"]);
 function trackThread(threadTs) {
   if (!threadTs) return;
   activeThreads.set(threadTs, Date.now());
@@ -259,11 +262,11 @@ async function handleCommand(command, channel, user, text, responseUrl) {
   }
 }
 
-async function handle(channel, user, text, threadTs) {
+async function handle(channel, user, text, threadTs, isBot = false) {
   try {
     const thread = threadTs || undefined;
     const history = thread ? await fetchThreadHistory(channel, thread) : [];
-    let messages = [{ role: "system", content: buildSystemPrompt() }, ...history, { role: "user", content: text }];
+    let messages = [{ role: "system", content: buildSystemPrompt() }, ...history, { role: "user", content: isBot ? `[Another MetroPrints agent]: ${text}\n\n(You're talking to another agent. Be concise. Only respond if substantive.)` : text }];
     messages = await foldContext(messages);
     const reply = await think(messages);
     await slack("chat.postMessage", { channel, text: reply, thread_ts: thread });
@@ -319,9 +322,23 @@ async function connect() {
         const text = evt.text || "";
 
         if (evt.type === "message" && isActiveThread(evt) && text.trim()) {
+          const threadKey = evt.thread_ts || evt.ts;
+          const last = threadCooldowns.get(threadKey) || 0;
+          if (Date.now() - last < 30000) return; // 30s cooldown
+          const isBot = KNOWN_BOTS.has(evt.user);
+          console.log(`[penny] THREAD: ${evt.channel} thread_ts=${threadKey} user=${evt.user}${isBot ? " [BOT]" : ""}`);
+          threadCooldowns.set(threadKey, Date.now());
+          await handle(evt.channel, evt.user, cleanText(text), evt.thread_ts || evt.ts, isBot);
+          return;
+        }
+        // Handle DMs — respond to any message (no @mention needed)
+        if (evt.type === "message" && evt.channel.startsWith("D") && text.trim()) {
+          if (isDuplicate(evt)) return;
+          console.log(`[penny] DM: ${evt.channel} user=${evt.user}`);
           await handle(evt.channel, evt.user, cleanText(text), evt.thread_ts || evt.ts);
           return;
         }
+
         if (evt.type === "app_mention") {
           await handle(evt.channel, evt.user, cleanText(text), evt.thread_ts || evt.ts);
           return;
