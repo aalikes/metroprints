@@ -5,10 +5,9 @@ import { join } from "node:path";
 const XAPP = process.env.SLACK_XAPP_TOKEN || "";
 const XOXB = process.env.SLACK_XOXB_TOKEN || "";
 const SLACK_API = "https://slack.com/api";
-const BOT_USER_ID = process.env.SLACK_BOT_USER_ID || "";
+const BOT_USER_ID = "U0BDF2P4SHL";
 
 // Deduplication: track recently handled events to avoid double-processing
-// app_mention + message events both fire for @mentions in channels
 const recentEvents = new Set();
 function isDuplicate(channel, user, ts) {
   const key = `${channel}:${user}:${ts}`;
@@ -18,13 +17,11 @@ function isDuplicate(channel, user, ts) {
   return false;
 }
 
-// Active threads Casey is participating in (thread_ts → last activity timestamp)
-// Messages in these threads don't need @mention — Casey is already in the conversation
+// Active threads Metro is participating in (thread_ts → last activity timestamp)
 const activeThreads = new Map();
 function trackThread(threadTs, channel) {
   if (!threadTs) return;
   activeThreads.set(threadTs, Date.now());
-  // Auto-expire after 30 minutes of inactivity
   setTimeout(() => {
     const last = activeThreads.get(threadTs);
     if (last && Date.now() - last >= 30 * 60 * 1000) activeThreads.delete(threadTs);
@@ -33,11 +30,9 @@ function trackThread(threadTs, channel) {
 function isActiveThread(event) {
   const threadTs = event.thread_ts || event.ts;
   if (activeThreads.has(threadTs)) {
-    activeThreads.set(threadTs, Date.now()); // extend activity
+    activeThreads.set(threadTs, Date.now());
     return true;
   }
-  // Also check if any tracked thread is a prefix of the event's thread_ts
-  // (Slack sometimes uses slightly different ts formats)
   for (const [key] of activeThreads) {
     if (threadTs.startsWith(key) || key.startsWith(threadTs)) {
       activeThreads.set(key, Date.now());
@@ -74,12 +69,12 @@ function cleanText(text) {
 
 async function connect() {
   const url = await getWebSocketUrl();
-  console.log(`[casey] Connecting to Slack Socket Mode...`);
+  console.log(`[metro] Connecting to Slack Socket Mode...`);
   const ws = new WebSocket(url);
   let pingInterval;
 
   ws.onopen = () => {
-    console.log("[casey] Connected. Listening.");
+    console.log("[metro] Connected. Listening.");
     pingInterval = setInterval(() => ws.send(JSON.stringify({ type: "ping" })), 30000);
   };
 
@@ -88,12 +83,12 @@ async function connect() {
       const msg = JSON.parse(event.data);
 
       if (msg.type === "hello") {
-        console.log(`[casey] Hello, connections: ${msg.num_connections}`);
+        console.log(`[metro] Hello, connections: ${msg.num_connections}`);
         return;
       }
 
       if (msg.type === "disconnect") {
-        console.log(`[casey] Disconnect: ${msg.reason}. Reconnecting...`);
+        console.log(`[metro] Disconnect: ${msg.reason}. Reconnecting...`);
         clearInterval(pingInterval);
         ws.close();
         setTimeout(connect, 1000);
@@ -121,20 +116,20 @@ async function connect() {
         // Respond to any message in a thread Casey is already participating in
         // No @mention needed — she's in the conversation
         if (evt.type === "message" && isActiveThread(evt) && text.trim()) {
-          console.log(`[casey] THREAD: ${evt.channel} thread_ts=${evt.thread_ts || evt.ts} user=${evt.user} text="${text.substring(0, 60)}"`);
+          console.log(`[metro] THREAD: ${evt.channel} thread_ts=${evt.thread_ts || evt.ts} user=${evt.user} text="${text.substring(0, 60)}"`);
           await handle(evt.channel, evt.user, cleanText(text), evt.ts);
           return;
         }
 
         // Debug: log when a message has thread_ts but isn't active thread
         if (evt.type === "message" && evt.thread_ts && !isMentioned(text) && text.trim()) {
-          console.log(`[casey] MSG_IN_THREAD (not active): ${evt.channel} thread_ts=${evt.thread_ts} user=${evt.user}`);
+          console.log(`[metro] MSG_IN_THREAD (not active): ${evt.channel} thread_ts=${evt.thread_ts} user=${evt.user}`);
         }
 
         // Handle app_mention event
         if (evt.type === "app_mention") {
           if (isDuplicate(evt.channel, evt.user, evt.ts)) return;
-          console.log(`[casey] MENTION (app_mention): ${evt.channel} user=${evt.user} text="${text.substring(0, 80)}"`);
+          console.log(`[metro] MENTION (app_mention): ${evt.channel} user=${evt.user} text="${text.substring(0, 80)}"`);
           await handle(evt.channel, evt.user, cleanText(text), evt.ts);
           return;
         }
@@ -142,24 +137,24 @@ async function connect() {
         // Handle message event with @Casey mention
         if (evt.type === "message" && isMentioned(text)) {
           if (isDuplicate(evt.channel, evt.user, evt.ts)) return;
-          console.log(`[casey] MENTION (message): ${evt.channel} user=${evt.user} text="${text.substring(0, 80)}"`);
+          console.log(`[metro] MENTION (message): ${evt.channel} user=${evt.user} text="${text.substring(0, 80)}"`);
           await handle(evt.channel, evt.user, cleanText(text), evt.ts);
           return;
         }
 
         // Log other events for debugging
         const subtype = evt.subtype || "";
-        console.log(`[casey] ${evt.type}${subtype ? "/" + subtype : ""} channel=${evt.channel} user=${evt.user}`);
+        console.log(`[metro] ${evt.type}${subtype ? "/" + subtype : ""} channel=${evt.channel} user=${evt.user}`);
       }
     } catch (e) {
-      console.error("[casey] Error:", e.message);
+      console.error("[metro] Error:", e.message);
     }
   };
 
-  ws.onerror = (err) => console.error("[casey] WS error:", err.message || err);
+  ws.onerror = (err) => console.error("[metro] WS error:", err.message || err);
   
   ws.onclose = (event) => {
-    console.log(`[casey] Closed (${event.code}). Reconnect in 5s...`);
+    console.log(`[metro] Closed (${event.code}). Reconnect in 5s...`);
     clearInterval(pingInterval);
     setTimeout(connect, 5000);
   };
@@ -169,13 +164,9 @@ async function connect() {
 
 const OBSIDIAN_VAULT = "/Users/shahsaint-cyr/Library/Mobile Documents/iCloud~md~obsidian/Documents/Skills";
 const KNOWLEDGE_FILES = [
-  "MetroPrints Agentic Centre.md",
+  "Skills/Metroprints/agents/Metro.md",
+  "Skills/Metroprints/agents/Hermes Agent Architecture.md",
   "Skills/Metroprints/playbooks/hermes-agent-sop.md",
-  "Skills/Metroprints/operations/casey-case-management.md",
-  "Skills/Metroprints/operations/casey-task-register.md",
-  "Skills/Metroprints/operations/casey-fbi-printdeck.md",
-  "Skills/Metroprints/agents/casey-agent-def.md",
-  "Skills/Metroprints/playbooks/slack-agent-runbook.md",
 ];
 
 let loadedKnowledge = "";
@@ -188,9 +179,9 @@ function loadKnowledge() {
       try {
         const content = readFileSync(path, "utf-8");
         parts.push(`### ${file.replace(".md", "")}\n${content.substring(0, 3000)}`);
-        console.log(`[casey] Loaded knowledge: ${file}`);
+        console.log(`[metro] Loaded knowledge: ${file}`);
       } catch (e) {
-        console.error(`[casey] Failed to read ${file}:`, e.message);
+        console.error(`[metro] Failed to read ${file}:`, e.message);
       }
     }
   }
@@ -266,7 +257,7 @@ const EMAIL_PASS = process.env.METROPRINTS_EMAIL_PASS || "";
 
 async function checkRecentEmails(subjectFilter = "FBI", maxResults = 5) {
   if (!EMAIL_USER || !EMAIL_PASS) {
-    console.log("[casey] Email monitoring skipped — no credentials");
+    console.log("[metro] Email monitoring skipped — no credentials");
     return { ok: false, error: "no_credentials", results: [] };
   }
   // Gmail IMAP via fetch is complex — simplified search via Gmail API planned
@@ -279,93 +270,50 @@ const DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions";
 
 // ── Base System Prompt ──────────────────────────────
 
-const BASE_SYSTEM_PROMPT = `You are Casey, the MetroPrints case management agent. You run cron jobs, spawn sub-agents for complex tasks, and monitor external services.
+const BASE_SYSTEM_PROMPT = `You are Metro, the MetroPrints executive intelligence and knowledge agent. You monitor operations, report on business health, and keep institutional knowledge current.
 
 ## Identity
 - MetroPrints is a mobile live scan fingerprinting and apostille services business in South Florida.
 - Website: https://metroprints.co
-- You manage the MetroPrints Slack workspace and all case management operations.
-- You respond concisely and helpfully. Be direct. No fluff.
+- You are the high-altitude agent — you watch the business at the strategic level, not the case-by-case level.
+- You produce snapshots, briefings, and content — you don't manage individual cases (that's Casey).
 
-## What You Do (NOT what you create)
-- YOU RUN CRON JOBS: scheduled tasks — morning standups, case sweeps, compliance checks. These auto-fire on timers.
-- YOU SPAWN SUB-AGENTS: when a task is too complex, spawn a sub-agent via the MCP or command interface. Do NOT create Slack bots; delegate to agents.
-- YOU MONITOR COMPLIANCE: FDLE certification status, operator background checks, insurance policy expirations, equipment calibration.
-- YOU MANAGE CASES: track every client from intake through fingerprinting, background check, apostille, to closure.
-- YOU POST ALERTS: P0/P1 to #metroprints-critical, P2/P3 to #metroprints-alerts.
-- YOU REPORT: daily standups, weekly reviews, compliance status.
-- REVENUE & FINANCE are handled by Penny, the finance oversight agent. Do NOT monitor Square/Stripe, revenue targets, or transactions. Coordinate with Penny when a case reaches a billable state.
+## What You Do
+- YOU PRODUCE OPS SNAPSHOTS: on Mon/Wed/Fri/Sat at 6 AM ET — pipeline health, stalled cases, aging follow-ups.
+- YOU CHECK REVENUE: Saturdays — revenue anomalies, trends (coordinated with Penny for underlying transaction data).
+- YOU WRITE BRIEFINGS: bi-weekly Mondays — strategic overview: revenue, pipeline, priorities.
+- YOU MANAGE KNOWLEDGE: detect SOP drift, update skill files, spot FAQ/blog opportunities.
+- YOU DETECT CONTENT: when client questions repeat, draft FAQs. When workflows change, update SOPs.
+- YOU COORDINATE: work with Casey (case-level signals), Penny (finance data), Cal (scheduling).
 
 ## What You DO NOT Do
-- Do NOT monitor revenue, payments, or financial data — Penny handles finance.
-- Do NOT create Slack bots or Slack apps. You are the agent, not a bot factory.
-- Do NOT claim you "can't" do something. Spawn a sub-agent or escalate to Shah.
-- Do NOT give generic intros. Execute tasks or explain what cron job will handle it.
+- Do NOT manage individual cases — that's Casey's domain.
+- Do NOT create Slack bots. Spawn sub-agents when needed.
+- Do NOT monitor raw payments — Penny handles financial transactions.
+- Do NOT schedule appointments — Cal handles scheduling.
 
 ## Agent Coordination
-- **Penny** (finance oversight): Revenue monitoring, Square/Stripe audit, expense classification, anomaly detection, dedup registry. Casey alerts Penny when a case reaches billable state (completed fingerprint/background check).
-- **Metro** (operations assistant): Client appointment tracking, follow-ups, operational pipeline.
+- Casey: feeds you case volume, intake mix, stalled-case signals for your snapshots.
+- Penny: Saturday revenue/anomaly pass — you flag at ops level, Penny audits transaction data.
+- Cal: scheduling utilization can feed pipeline-health view if useful.
 
 ## Workspace Knowledge
-- #metroprints-critical (private, C0BD7AR750F): P0/P1 alerts — members: Shah (owner), Casey
-- #metroprints-alerts (private, C0BDKCYUEQM): P2/P3 alerts and status updates — entire MetroPrints team
-- #all-metroprints: General announcements channel
-- #social: Team fun/random
-- Users: Shah Saint-Cyr (owner/admin), Casey (case management), Metro (operations), Penny (finance — planned), casey-x (legacy)
+- #metroprints-critical (C0BD7AR750F): P0/P1 alerts — Casey posts here
+- #metroprints-alerts (C0BDKCYUEQM): P2/P3 alerts and your ops snapshots
+- #metroprints-alerts is where your scheduled reports go.
 
-## Cron Jobs You Run
-- 8 AM: Morning standup — scan critical alerts, list today's appointments, flag stale cases
-- 9 AM: Stale case sweep — flag all cases with >48 hrs no progress
-- 12 PM: Midday check — any unresolved P0/P1?
-- 4 PM: End-of-day summary — appointments completed, cases closed
-- Fri 4 PM: Weekly review — case summaries, compliance check (FDLE certs, insurance, equipment)
-- Every 6 hrs: Health check — verify Casey alive, Socket Mode connected, API keys valid
-
-## Case Lifecycle
-1. Intake → document verification, service type confirmation
-2. Fingerprinting → appointment scheduling, reminders, operator/equipment checks
-3. Background Check → FDLE submission, timeline tracking, rejection handling
-4. Apostille → document prep, SoS submission, delivery
-5. Closure → inform Penny of billable state, satisfaction survey, archival
-
-## Alert Thresholds
-- P0 (Critical, <1 hr): FDLE cert expired, insurance lapsed, data breach, equipment failure
-- P1 (Urgent, by EOD): Cert expiring <60 days, quality failure >10%, client unreachable, background check stalled >10 days
-- P2 (Standard, 3-5 days): Low availability, high no-show, client inactive >30 days, apostille processing >7 days
-- P3 (FYI, weekly): Compliance audit due, training backlog, engagement metrics
-
-## External Services to Monitor
-- FDLE Portal: operator certification status, renewal deadlines
-- Insurance Provider: policy expiration dates
-- Notion MP Planning DB (27189d07-dc61-8168-9182-ef0386dbd9e7): case tracking, alert board
-- (Revenue/payment data belongs to Penny — Notion Financial Tracker, Square/Stripe)
-
-## FBI PrintDeck Workflow (Phase 2.5)
-When handling FBI cases, Casey manages the FBI PrintDeck sub-workflow between fingerprinting and background check:
-- Step 1: Intake — Check 2 forms of ID, confirm client type (EDO vs Dept Order), capture fingerprints, submit FBI request using shah@metroprints.co, process payment
-- Step 2: Wait for FBI Email #2 confirmation in the technician inbox
-- Step 3: After Email #2 arrives — Open MP Activities FBI case, create/confirm Google Drive folder, save confirmation email, extract Order# / PIN / Tokenised Link, export fingerprint file
-- Step 4: File conversion chain — ENC → EFT → PDF (PrintDeck handles EFT→PDF; ENC→EFT is manual via capture system)
-- Step 5: Save PDF to client Google Drive folder, log filename + timestamp
-- Step 6: Print packet — confirmation email (1 page) + fingerprint cards (2 cards), crop if needed
-- Step 7: Mail to: FBI CJIS Division, ATTN: ELECTRONIC SUMMARY REQUEST, 1000 Custer Hollow Road, Clarksburg, WV 26306
-- Step 8: Notion tracking — log ALL dates: EFT export, PDF generated, Drive folder link, Email #2 received, mailed date, tracking #, expected delivery, follow-up date
-- Library printers: Country Walk ID 106246, Culmer/Overtown ID 106247
-- Current manual steps: 23. Near-term automation target: 17. Custom app target: 12.
-- Casey monitors the pipeline, posts reminders for manual steps, and escalates stalled cases (>48 hrs at any conversion step). Do NOT claim to run conversion software — those are manual/Make steps.
-
-## Sub-Agent Spawning
-When a task requires heavy computation, external API access, or parallel processing:
-- Say "Let me spawn an agent for that" (not "I can't")
-- Use the MCP tools or command interface to delegate
-- Sub-agents handle: complex audits, data aggregation, multi-source monitoring
-- You coordinate results and report back to Shah
+## Cadence
+- Mon/Wed/Fri/Sat 6 AM ET: Ops snapshot → #metroprints-alerts
+- Saturday: Revenue check (same run)
+- Bi-weekly Monday: Strategic briefing → #metroprints-alerts
+- Weekly: Knowledge/content review (SOP drift, FAQ opportunities)
 
 ## Response Style
-- Execute or delegate — never just explain
-- Reference your cron schedule when applicable: "My 8 AM standup will catch that"
-- If you need external access you don't have, specify exactly what key/scope is needed
-- Be conversational but professional`;
+- Strategic, data-driven, concise.
+- Reference your snapshot schedule: "My next ops snapshot runs Wednesday 6 AM."
+- If a question needs case-level detail, defer to Casey.
+- If a question needs transaction-level detail, defer to Penny.
+- Be executive-level — you brief Shah, not the team.`;
 
 async function think(messages) {
   if (!DEEPSEEK_KEY) return null;
@@ -380,19 +328,19 @@ async function think(messages) {
         model: "deepseek-chat",
         messages,
         temperature: 0.7,
-        max_tokens: 1000,
+        max_tokens: 1200,
       }),
     });
     const j = await res.json();
-    if (j.error) { console.error("[casey] LLM error:", JSON.stringify(j.error)); return null; }
+    if (j.error) { console.error("[metro] LLM error:", JSON.stringify(j.error)); return null; }
     return j.choices?.[0]?.message?.content || null;
   } catch (e) {
-    console.error("[casey] LLM error:", e.message);
+    console.error("[metro] LLM error:", e.message);
     return null;
   }
 }
 
-async function fetchContext(channel, thread, count = 40) {
+async function fetchContext(channel, thread, count = 20) {
   try {
     const params = { channel, limit: count };
     if (thread) params.ts = thread;
@@ -420,8 +368,6 @@ async function fetchContext(channel, thread, count = 40) {
 
 // ── Context Folding ──────────────────────────────────
 
-// Summarize oldest messages to stay under token limits
-// 60% summarized, 40% kept verbatim — folds at ~15K tokens
 async function foldContext(messages) {
   const estimateTokens = (arr) => arr.reduce((sum, m) => sum + Math.ceil((m.content?.length || 0) / 4), 0);
   const total = estimateTokens(messages);
@@ -439,11 +385,11 @@ async function foldContext(messages) {
       { role: "user", content: toSummarize.map(m => `[${m.role}]: ${m.content}`).join("\n") },
     ]);
     if (summary) {
-      console.log(`[casey] Context folded: ${toSummarize.length} msgs → summary (${estimateTokens(toSummarize)} → ~${Math.ceil(summary.length / 4)} tokens)`);
+      console.log(`[metro] Context folded: ${toSummarize.length} msgs → summary`);
       return [{ role: "system", content: `[Earlier conversation: ${summary}]` }, ...recent];
     }
   } catch (e) {
-    console.error("[casey] Context fold failed:", e.message);
+    console.error("[metro] Context fold failed:", e.message);
   }
   return messages;
 }
@@ -458,13 +404,13 @@ async function handle(channel, user, text, thread) {
       if (u.ok && u.user?.real_name) {
         userName = u.user.real_name;
       } else {
-        console.log(`[casey] users.info failed for ${user}: ${JSON.stringify(u.error || u)}`);
+        console.log(`[metro] users.info failed for ${user}: ${JSON.stringify(u.error || u)}`);
       }
     } catch (e) {
-      console.error(`[casey] users.info error for ${user}:`, e.message);
+      console.error(`[metro] users.info error for ${user}:`, e.message);
     }
 
-    console.log(`[casey] Handling "${text.substring(0, 60)}" from ${userName}`);
+    console.log(`[metro] Handling "${text.substring(0, 60)}" from ${userName}`);
 
     // Build conversation context
     const history = await fetchContext(channel, thread);
@@ -475,18 +421,17 @@ async function handle(channel, user, text, thread) {
       { role: "user", content: `[${userName}]: ${text}` },
     ];
 
-    // Auto-fold: summarize oldest messages when context exceeds ~15K tokens
     const folded = await foldContext(messages);
 
     let reply;
     const llmReply = await think(folded);
     if (llmReply) {
       reply = llmReply;
-      console.log(`[casey] LLM reply for ${userName}`);
+      console.log(`[metro] LLM reply for ${userName}`);
     } else {
       // Fallback if LLM unavailable
       reply = `Hey ${userName.split(" ")[0]}! I'm Casey, the MetroPrints workspace admin. I can help with workspace audits, alerts, channels, and service checks. What do you need?`;
-      console.log(`[casey] Fallback reply (no LLM)`);
+      console.log(`[metro] Fallback reply (no LLM)`);
     }
 
     await slack("chat.postMessage", {
@@ -495,9 +440,9 @@ async function handle(channel, user, text, thread) {
       thread_ts: thread,
     });
     trackThread(thread, channel);
-    console.log(`[casey] Replied in ${channel} | tracked thread=${thread}`);
+    console.log(`[metro] Replied in ${channel} | tracked thread=${thread}`);
   } catch (e) {
-    console.error("[casey] handle error:", e.message);
+    console.error("[metro] handle error:", e.message);
     try {
       await slack("chat.postMessage", {
         channel,
@@ -513,14 +458,14 @@ async function handle(channel, user, text, thread) {
 
 async function handleCommand(command, channel, user, text, responseUrl) {
   try {
-    console.log(`[casey] COMMAND /${command} from ${user}: "${text}"`);
+    console.log(`[metro] COMMAND /${command} from ${user}: "${text}"`);
 
     let userName = "there";
     try {
       const u = await slack("users.info", { user });
       if (u.ok && u.user?.real_name) userName = u.user.real_name;
     } catch (e) {
-      console.error(`[casey] users.info error:`, e.message);
+      console.error(`[metro] users.info error:`, e.message);
     }
 
     // Send "thinking" message first
@@ -533,56 +478,35 @@ async function handleCommand(command, channel, user, text, responseUrl) {
     let finalText;
 
     switch (command) {
-      case "/casey-audit":
-        finalText = await runAudit();
+      case "/metro-snapshot":
+        finalText = "📊 *MetroPrints Ops Snapshot*\n\nGenerating... (full Notion integration pending)\n\n*Pipeline Health:* Refer to `/metro pipeline` or check MP - Activities in Notion.\n*Stalled Cases:* Casey tracks these daily — her sweep runs at 9 AM.\n*Aging Follow-ups:* Next snapshot scheduled per cadence.\n\nNext scheduled snapshot: Mon/Wed/Fri/Sat 6 AM ET.";
         break;
-      case "/casey-channels":
-        finalText = await listChannels();
+      case "/metro-pipeline":
+        finalText = "📈 *Pipeline Health*\n\nCheck MP - Activities for active cases. Casey handles case-level tracking. Key signals Metro watches:\n• Case volume by type (FBI/Live Scan vs Apostille vs Notary)\n• Average processing time from intake to closure\n• Stalled case percentage\n• Appointment utilization rate\n\nUse `/metro snapshot` for the full picture.";
         break;
-      case "/casey-members":
-        finalText = await listMembers();
+      case "/metro-revenue":
+        finalText = "💰 *Revenue Check*\n\nPenny handles financial transaction data. Metro flags anomalies at the ops level:\n• If revenue is trending below target, Casey's case volume will show it first\n• Saturday revenue pass is coordinated with Penny\n• Strategic briefing covers revenue trends every other Monday\n\nUse `/metro briefing` for the strategic overview.";
         break;
-      case "/casey-status":
-        finalText = await workspaceStatus();
+      case "/metro-briefing":
+        finalText = `*Strategic Briefing*\n\n*Cadence:* Bi-weekly Monday, 6 AM ET → #metroprints-alerts\n*Covers:* Revenue trends, pipeline health, compliance status, content opportunities, priority actions\n\nLast briefing: Check #metroprints-alerts for most recent.\nNext briefing: ${nextBriefingDate()}.\n\nKey metrics tracked:\n• Revenue vs target (via Penny)\n• Case completion rate (via Casey)\n• Compliance status (FDLE certs, insurance)\n• Knowledge gaps / content opportunities`;
         break;
-      case "/casey-alert":
-        finalText = await postAlert(text, userName);
+      case "/metro-content":
+        finalText = "📝 *Content & Knowledge*\n\nMetro detects opportunities for:\n• FAQ entries: when the same client question appears 3+ times\n• Blog posts: from operational insights or frequently asked questions\n• SOP updates: when workflows change or drift detected\n• Skill file updates: when MP AI Skills need refreshing\n\nCurrent content pipeline: Check MP - Blog & Content in Notion.\n\nFlag a content opportunity: just mention it in this channel.";
         break;
-      case "/casey-recall":
-        finalText = await recallThread(channel, text);
-        break;
-      case "/casey-help":
+      case "/metro-help":
         finalText = showHelp();
         break;
-      case "/casey-learn":
+      case "/metro-learn":
         const learned = loadKnowledge();
         finalText = learned ? `Loaded knowledge from Obsidian:\n${KNOWLEDGE_FILES.map(f => `• ${f}`).join("\n")}` : "No Obsidian knowledge files found.";
         break;
-      case "/casey-fbi-status":
-        finalText = showFbiStatus(text);
-        break;
-      case "/casey-fbi-stale":
-        finalText = "FBI stale case sweep — scan for cases stalled >48 hrs at ENC/EFT/PDF step. (Full cron integration pending Notion API.)\nKnown FBI cases should be checked manually:\n• Orders with Email #2 received but no conversion logged\n• PDFs generated but not mailed\n• Mailed but no tracking # logged\n• Follow-up dates past due";
-        break;
-      case "/casey-fbi-dispatch":
-        finalText = "FBI Daily Dispatch:\n\n📋 Check for:\n1. New Email #2 confirmations in shah@metroprints.co inbox\n2. Cases waiting on ENC→EFT conversion\n3. PDFs ready for printing\n4. Packets ready for mailing\n5. Follow-ups due today\n\nUse `/casey fbi-status [Order#]` to check individual cases.";
-        break;
-      case "/casey-website":
-        finalText = await checkWebsiteStatus();
-        break;
-      case "/casey-cases":
-        finalText = await listRecentCases();
-        break;
-      case "/casey-fbi-intake":
-        finalText = `FBI Case Intake initiated.\n\nChecklist:\n✅ 2 forms of ID\n✅ Client type: EDO or Dept Order\n✅ Fingerprints captured\n✅ FBI request submitted (shah@metroprints.co)\n✅ Notion case confirmed (Name/Email/Phone correct)\n✅ Payment processed\n⏳ Waiting for FBI Email #2\n\nUse \`/casey fbi-email2 [Order#]\` when confirmation arrives.\n\nAdditional context: ${text || "(none provided)"}`;
-        break;
       default:
-        // /casey — LLM-powered general query
+        // /metro — LLM-powered general query
         const messages = [
           { role: "system", content: buildSystemPrompt() },
-          { role: "user", content: `[${userName} invoked /casey${text ? ` with: "${text}"` : ""}]: Respond helpfully and concisely.` },
+          { role: "user", content: `[${userName} invoked /metro${text ? ` with: "${text}"` : ""}]: Respond helpfully and concisely.` },
         ];
-        finalText = await think(messages) || `Hey ${userName.split(" ")[0]}! How can I help? Try /casey-help for commands.`;
+        finalText = await think(messages) || `Hey ${userName.split(" ")[0]}! I'm Metro, the ops intelligence agent. Try /metro-help for commands.`;
     }
 
     // Respond via response_url
@@ -591,9 +515,9 @@ async function handleCommand(command, channel, user, text, responseUrl) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: finalText || "Done.", replace_original: true, response_type: "in_channel" }),
     });
-    console.log(`[casey] Command /${command} completed for ${userName}`);
+    console.log(`[metro] Command /${command} completed for ${userName}`);
   } catch (e) {
-    console.error("[casey] handleCommand error:", e.message);
+    console.error("[metro] handleCommand error:", e.message);
     try {
       await fetch(responseUrl, {
         method: "POST",
@@ -705,51 +629,24 @@ async function recallThread(channel, text) {
 }
 
 function showHelp() {
-  return `*Casey — MetroPrints Case Management Agent*\n\n*General:*\n• \`/casey [question]\` — Ask me anything\n• \`/casey-audit\` — Full workspace audit\n• \`/casey-channels\` — List all channels\n• \`/casey-members\` — List all members\n• \`/casey-status\` — Workspace health check\n• \`/casey-alert [P0-P3] [msg]\` — Post alert\n• \`/casey-recall [topic]\` — Summarize conversation\n\n*FBI PrintDeck:*\n• \`/casey fbi-intake [name]\` — Start new FBI case\n• \`/casey fbi-status [order#]\` — FBI case timeline\n• \`/casey fbi-stale\` — Cases stalled >48 hrs\n• \`/casey fbi-dispatch\` — Today's FBI action items\n\n*System:*\n• \`/casey-help\` — This menu\n• \`/casey-learn\` — Refresh Obsidian knowledge\n\nRevenue & finance: ask Penny.`;
+  return `*Metro — MetroPrints Ops Intelligence & Knowledge Agent*\n\n*Ops:*\n• \`/metro [question]\` — Ask me anything\n• \`/metro snapshot\` — Operations snapshot\n• \`/metro pipeline\` — Pipeline health\n• \`/metro revenue\` — Revenue check\n• \`/metro briefing\` — Strategic briefing\n\n*Knowledge & Content:*\n• \`/metro content\` — Content opportunities\n\n*System:*\n• \`/metro-help\` — This menu\n• \`/metro-learn\` — Refresh Obsidian knowledge\n\nCases: ask Casey. Finance: ask Penny.`;
 }
 
-function showFbiStatus(text) {
-  const orderId = text?.trim() || "(unknown Order#)";
-  return `*FBI Case Status — ${orderId}*\n\n*FBI CJIS Mailing Address:*\nFBI CJIS Division\nATTN: ELECTRONIC SUMMARY REQUEST\n1000 Custer Hollow Road\nClarksburg, West Virginia 26306\n\n*Library Printers (Princh):*\n• Country Walk: 106246\n• Culmer/Overtown: 106247\n\n*Workflow Checklist:*
-🚧 Intake — IDs checked, client type confirmed, prints captured
-🚧 FBI Request — Submitted via shah@metroprints.co
-🚧 Email #2 — Confirm received, extract Order#/PIN/Link
-🚧 Conversion — ENC → EFT → PDF (PrintDeck)
-🚧 Drive — PDF saved to client Google Drive folder
-🚧 Print — Confirmation email + 2 fingerprint cards
-🚧 Mail — Tracking # logged, mailed date recorded
-🚧 Notion — All milestones logged
-
-Use \`/casey fbi-stale\` to find cases stuck at any step.`;
+function nextBriefingDate() {
+  const now = new Date();
+  const day = now.getDay();
+  // Bi-weekly Monday: find next Monday, then alternate weeks
+  let daysUntilMonday = (8 - day) % 7;
+  if (daysUntilMonday === 0) daysUntilMonday = 7;
+  const nextMonday = new Date(now);
+  nextMonday.setDate(now.getDate() + daysUntilMonday);
+  // Simple: every other Monday from epoch
+  const weekNum = Math.floor(nextMonday.getTime() / (7 * 24 * 60 * 60 * 1000));
+  const isBiweekly = weekNum % 2 === 0;
+  if (!isBiweekly) nextMonday.setDate(nextMonday.getDate() + 7);
+  return nextMonday.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 }
 
-// ── Website & Notion Commands ────────────────────────
-
-async function checkWebsiteStatus() {
-  const result = await checkWebsite();
-  if (result.up) {
-    return `✅ *MetroPrints website is UP*\n• Status: ${result.status}\n• Latency: ${result.latency_ms}ms\n• URL: ${MP_WEBSITE}`;
-  }
-  return `❌ *MetroPrints website is DOWN*\n• Status: ${result.status || "N/A"}\n• Error: ${result.error || "Connection failed"}\n• URL: ${MP_WEBSITE}`;
-}
-
-async function listRecentCases() {
-  const result = await notionQueryDB(NOTION_DBS.activities);
-  if (result.error) return `Notion unavailable: ${result.error}`;
-  const pages = result.results || [];
-  if (!pages.length) return "No recent cases found in MP - Activities.";
-
-  const lines = pages.map(p => {
-    const props = p.properties || {};
-    const title = Object.values(props).find(v => v.type === "title");
-    const name = title?.title?.[0]?.plain_text || "(untitled)";
-    const edited = new Date(p.last_edited_time).toLocaleDateString("en-US");
-    return `• ${name} (last updated: ${edited})`;
-  }).join("\n");
-
-  return `*Recent MP - Activities (last ${pages.length}):*\n${lines}\n\nUse \`/casey hostatus\` for website, \`/casey fbi-dispatch\` for FBI cases.`;
-}
-
-console.log("[casey] Starting Casey Socket Mode listener...");
+console.log("[metro] Starting Casey Socket Mode listener...");
 loadKnowledge();
 connect();
