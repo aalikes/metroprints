@@ -4,3 +4,8 @@ node_modules/
 .DS_Store
 data/*
 src/config/*
+
+# Generated — contains secrets
+agents/systemd/*.service
+agents/systemd/hermes.env
+scripts/vps-deploy.mjs

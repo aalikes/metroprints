@@ -288,6 +288,10 @@ async function handleCommand(command, channel, user, text, responseUrl) {
         "I can reason about any of this the moment those DB IDs are added to my config. Until then, ask me directly and I'll do my best from context.",
       ].join("\n");
       break;
+      case "/penny-fetch":
+        finalText = await fetchUrl(text || "https://");
+        break;
+
     default:
       reply = await think([{ role: "system", content: buildSystemPrompt() }, { role: "user", content: text || "Hi" }]);
   }
@@ -307,6 +311,7 @@ async function handle(channel, user, text, threadTs, isBot = false) {
   try {
     const thread = threadTs || undefined;
     const history = thread ? await fetchThreadHistory(channel, thread) : [];
+
     let messages = [{ role: "system", content: buildSystemPrompt() }, ...history, { role: "user", content: isBot ? `[Another MetroPrints agent]: ${text}\n\n(You're talking to another agent. Be concise. Only respond if substantive.)` : text }];
     messages = await foldContext(messages);
     const reply = await think(messages);
@@ -314,6 +319,17 @@ async function handle(channel, user, text, threadTs, isBot = false) {
     trackThread(thread || channel);
   } catch (e) {
     console.error("[penny] handle error:", e.message);
+  }
+}
+
+
+async function fetchUrl(url) {
+  try {
+    const res = await fetch(url, { headers: { "User-Agent": "HermesAgent/1.0" }, signal: AbortSignal.timeout(10000) });
+    const text = await res.text();
+    return text.substring(0, 6000);
+  } catch (e) {
+    return `Fetch error: ${e.message}`;
   }
 }
 

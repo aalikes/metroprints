@@ -75,6 +75,17 @@ function cleanText(text) {
   return text.replace(new RegExp(`<@${BOT_USER_ID}>\\s*`, "g"), "").trim();
 }
 
+
+async function fetchUrl(url) {
+  try {
+    const res = await fetch(url, { headers: { "User-Agent": "HermesAgent/1.0" }, signal: AbortSignal.timeout(10000) });
+    const text = await res.text();
+    return text.substring(0, 6000);
+  } catch (e) {
+    return `Fetch error: ${e.message}`;
+  }
+}
+
 async function connect() {
   const url = await getWebSocketUrl();
   console.log(`[casey] Connecting to Slack Socket Mode...`);
@@ -580,6 +591,7 @@ async function handle(channel, user, text, thread, isBot = false) {
       { role: "system", content: buildSystemPrompt() },
       ...prior,
       { role: "user", content: isBot
+
         ? `[${userName} — another MetroPrints agent]: ${text}\n\n(You're talking to another agent. Be concise. Don't repeat yourself. Only respond if you have something substantive to add.)`
         : `[${userName}]: ${text}` },
     ];
@@ -707,6 +719,10 @@ async function handleCommand(command, channel, user, text, responseUrl) {
       case "/casey-fbi-intake":
         finalText = `FBI Case Intake initiated.\n\nChecklist:\n✅ 2 forms of ID\n✅ Client type: EDO or Dept Order\n✅ Fingerprints captured\n✅ FBI request submitted (shah@metroprints.co)\n✅ Notion case confirmed (Name/Email/Phone correct)\n✅ Payment processed\n⏳ Waiting for FBI Email #2\n\nUse \`/casey fbi-email2 [Order#]\` when confirmation arrives.\n\nAdditional context: ${text || "(none provided)"}`;
         break;
+      case "/casey-fetch":
+        finalText = await fetchUrl(text || "https://");
+        break;
+
       default:
         // /casey — LLM-powered general query
         const messages = [

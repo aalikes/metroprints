@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>COMPANY — Deep-Dive Research Report</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --red: #f85149; --orange: #d2991d;
+    --purple: #a371f7; --cyan: #39d2c0; --pink: #f778ba;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+    max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem;
+  }
+  h1 { font-size:2rem; text-align:center; color:var(--accent); margin-bottom:0.25rem; }
+  h1 span { color:var(--muted); font-size:0.9rem; display:block; margin-top:0.25rem; }
+  h2 { font-size:1.4rem; color:var(--accent); border-bottom:2px solid var(--border); padding-bottom:0.3rem; margin:2.5rem 0 1rem; }
+  h3 { font-size:1.15rem; color:var(--text); margin:1.25rem 0 0.5rem; }
+  h4 { font-size:1rem; color:var(--purple); margin:1rem 0 0.4rem; }
+  p { margin-bottom:0.75rem; }
+  ul,ol { margin:0.5rem 0 0.75rem 1.5rem; }
+  li { margin-bottom:0.3rem; }
+
+  /* --- Shared Components --- */
+  .exec-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem;
+  }
+  .exec-box h3 { color: var(--green); margin-top: 0; }
+
+  .score-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem; margin: 1rem 0;
+  }
+  .score-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1.25rem; text-align: center;
+  }
+  .score-card h3 { margin:0 0 0.5rem; font-size:1rem; color:var(--accent); }
+  .score-card .num { font-size:2rem; font-weight:700; color:var(--green); }
+  .score-card .label { color:var(--muted); font-size:0.85rem; }
+
+  .metric-row {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem; margin: 1rem 0;
+  }
+  .metric {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1rem; text-align: center;
+  }
+  .metric .num { font-size:1.6rem; font-weight:700; color:var(--accent); }
+  .metric .label { color:var(--muted); font-size:0.8rem; margin-top:0.2rem; }
+
+  table {
+    width:100%; border-collapse:collapse; margin:1rem 0;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden; font-size:0.85rem;
+  }
+  th,td { padding:0.6rem 0.75rem; text-align:left; border-bottom:1px solid var(--border); }
+  th { background:rgba(88,166,255,0.1); color:var(--accent); font-weight:600; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover { background:rgba(177,186,196,0.05); }
+
+  .tag { display:inline-block; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.75rem; font-weight:600; }
+  .tag-green { background:rgba(63,185,80,0.15); color:var(--green); }
+  .tag-red { background:rgba(248,81,73,0.15); color:var(--red); }
+  .tag-orange { background:rgba(210,153,29,0.15); color:var(--orange); }
+  .tag-blue { background:rgba(88,166,255,0.15); color:var(--accent); }
+  .tag-purple { background:rgba(163,113,247,0.15); color:var(--purple); }
+  .tag-cyan { background:rgba(57,210,192,0.15); color:var(--cyan); }
+
+  .chart-row { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin:1rem 0; }
+  .chart-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1rem;
+  }
+  .chart-box.full { grid-column:1/-1; }
+  .chart-box h4 { margin:0 0 0.75rem; color:var(--text); }
+  .chart-box canvas { width:100% !important; max-height:300px; }
+
+  .finding {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;
+    border-left: 3px solid var(--accent);
+  }
+  .finding.high { border-left-color: var(--red); }
+  .finding.medium { border-left-color: var(--orange); }
+  .finding.low { border-left-color: var(--green); }
+  .finding .source { color:var(--muted); font-size:0.8rem; margin-top:0.4rem; }
+
+  .rec-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1.25rem; margin-bottom: 0.75rem;
+  }
+  .rec-card h4 { margin:0 0 0.4rem; color:var(--accent); }
+
+  .agent-brief {
+    background: var(--surface); border: 1px solid rgba(163,113,247,0.3);
+    border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem;
+  }
+  .agent-brief h4 { color:var(--purple); margin:0 0 0.5rem; }
+  .agent-brief .query { background:rgba(88,166,255,0.08); border:1px solid var(--border); border-radius:6px; padding:0.75rem; font-family:monospace; font-size:0.85rem; margin-top:0.5rem; white-space:pre-wrap; }
+
+  .source-list {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1rem; margin: 1rem 0; font-size:0.85rem;
+  }
+  .source-list li { margin-bottom:0.4rem; }
+  .source-list a { color:var(--accent); }
+
+  .footnote {
+    margin-top:3rem; padding-top:1rem; border-top:1px solid var(--border);
+    color:var(--muted); font-size:0.8rem; text-align:center;
+  }
+
+  @media print {
+    body { background:white; color:black; max-width:100%; padding:1rem; }
+    h1,h2,h3,h4 { color:black; }
+    .score-card,.finding,.rec-card,.agent-brief,.metric,.exec-box { break-inside:avoid; background:#f5f5f5; border-color:#ddd; }
+    table { background:white; }
+    .tag { border:1px solid #999; color:black; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- TITLE BLOCK — replace COMPANY and subtitle                  -->
+<!-- ============================================================ -->
+<h1>COMPANY
+  <span>Deep-Dive Research Report — Industry, Workflow &amp; Technology — MONTH DD, YYYY</span>
+</h1>
+
+<!-- ============================================================ -->
+<!-- 1. EXECUTIVE SUMMARY                                         -->
+<!-- ============================================================ -->
+<h2>1. Executive Summary</h2>
+<div class="exec-box">
+  <h3>TL;DR — One-paragraph takeaway of the entire report.</h3>
+  <p>
+    [Describe COMPANY in one sentence — what they do, who they serve, their primary revenue model.
+    Summarize the key industry dynamics affecting them. Identify the top 1-2 workflow bottlenecks
+    and the most impactful recommendation. This is what gets skimmed first — make it punchy.]
+  </p>
+  <p><strong>Key numbers:</strong> [Revenue range / team size / customer count / growth rate — any anchor metrics]</p>
+  <p><strong>Top recommendation:</strong> [1-sentence call to action]</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- 1a. AT-A-GLANCE METRICS                                      -->
+<!-- ============================================================ -->
+<div class="metric-row">
+  <div class="metric"><div class="num">→</div><div class="label">Company Stage</div></div>
+  <div class="metric"><div class="num">→</div><div class="label">Team Size</div></div>
+  <div class="metric"><div class="num">→</div><div class="label">Annual Revenue</div></div>
+  <div class="metric"><div class="num">→</div><div class="label">Growth Rate</div></div>
+  <div class="metric"><div class="num">→</div><div class="label">Market Size</div></div>
+  <div class="metric"><div class="num">→</div><div class="label">Competitors</div></div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 2. COMPANY OVERVIEW                                          -->
+<!-- ============================================================ -->
+<h2>2. Company Overview</h2>
+
+<h3>2.1 What They Do</h3>
+<p>
+  [Core product or service description. What problem does COMPANY solve?
+  Who is the ideal customer? What is the value proposition?]
+</p>
+
+<h3>2.2 Business Model</h3>
+<p>
+  [How does COMPANY make money? Subscription? One-time sales? Marketplace fees?
+  Service retainers? Describe revenue streams, pricing model, average deal size.]
+</p>
+
+<h3>2.3 Key Stakeholders &amp; Roles</h3>
+<table>
+  <thead>
+    <tr><th>Role</th><th>Name / Who</th><th>Responsibilities</th><th>Pain Points</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Founder/Owner</td><td>[name]</td><td>[vision, sales, operations]</td><td>[bottlenecks, overload]</td></tr>
+    <tr><td>Operations</td><td>[name]</td><td>[fulfillment, logistics]</td><td>[manual steps, errors]</td></tr>
+    <tr><td>Customer-Facing</td><td>[name]</td><td>[support, onboarding]</td><td>[response time, volume]</td></tr>
+    <tr><td>Technical</td><td>[name]</td><td>[infrastructure, tooling]</td><td>[tech debt, scaling]</td></tr>
+    <!-- Add/remove rows as needed -->
+  </tbody>
+</table>
+
+<h3>2.4 Technology Stack</h3>
+<table>
+  <thead>
+    <tr><th>Layer</th><th>Current Tools</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Website / Storefront</td><td>[platform]</td><td>[custom? template? ecom?]</td></tr>
+    <tr><td>Order Management</td><td>[tool]</td><td>[manual steps? integration?]</td></tr>
+    <tr><td>CRM / Customer Comms</td><td>[tool]</td><td>[email, SMS, portal?]</td></tr>
+    <tr><td>Fulfillment / Production</td><td>[tool]</td><td>[equipment, vendors, tracking]</td></tr>
+    <tr><td>Finance / Invoicing</td><td>[tool]</td><td>[automated? manual?]</td></tr>
+    <tr><td>Internal Communication</td><td>[tool]</td><td>[Slack, Teams, email?]</td></tr>
+    <tr><td>Knowledge / Docs</td><td>[tool]</td><td>[Notion, Confluence, wiki?]</td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ -->
+<!-- 3. INDUSTRY LANDSCAPE                                        -->
+<!-- ============================================================ -->
+<h2>3. Industry Landscape</h2>
+
+<h3>3.1 Market Overview</h3>
+<p>
+  [What industry does COMPANY operate in? Total addressable market size.
+  Growth trends (is it growing, shrinking, consolidating?). Key macro trends
+  affecting the space (regulation, technology shifts, consumer behavior changes).]
+</p>
+
+<h3>3.2 Competitive Landscape</h3>
+<table>
+  <thead>
+    <tr><th>Competitor</th><th>Type</th><th>Strengths</th><th>Weaknesses</th><th>Differentiator vs. COMPANY</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>[Competitor A]</td><td>[direct/indirect]</td><td>[what they do well]</td><td>[where they fall short]</td><td>[how COMPANY differs]</td></tr>
+    <tr><td>[Competitor B]</td><td>[direct/indirect]</td><td>[what they do well]</td><td>[where they fall short]</td><td>[how COMPANY differs]</td></tr>
+    <tr><td>[Competitor C]</td><td>[direct/indirect]</td><td>[what they do well]</td><td>[where they fall short]</td><td>[how COMPANY differs]</td></tr>
+    <!-- Add/remove rows as needed -->
+  </tbody>
+</table>
+
+<h3>3.3 COMPANY's Market Position</h3>
+<p>
+  [Where does COMPANY sit in the value chain? Premium? Budget? Niche specialist?
+  What is their moat? What are the top 3 risks to their position?]
+</p>
+
+<div class="score-grid">
+  <div class="score-card">
+    <h3>Market Position</h3>
+    <div class="num">→</div>
+    <div class="label">[e.g. Niche Leader / Mid-Tier / New Entrant]</div>
+  </div>
+  <div class="score-card">
+    <h3>Competitive Intensity</h3>
+    <div class="num">→</div>
+    <div class="label">[e.g. High / Moderate / Low]</div>
+  </div>
+  <div class="score-card">
+    <h3>Threat of Substitution</h3>
+    <div class="num">→</div>
+    <div class="label">[e.g. High / Moderate / Low]</div>
+  </div>
+  <div class="score-card">
+    <h3>Growth Potential</h3>
+    <div class="num">→</div>
+    <div class="label">[e.g. Strong / Moderate / Flat]</div>
+  </div>
+</div>
+
+<h3>3.4 Industry Trends &amp; Signals</h3>
+<div class="finding high">
+  <strong><span class="tag tag-red">TREND</span> [Trend Name]</strong>
+  <p>[Description of trend and its predicted impact on COMPANY. Cite sources.]</p>
+  <div class="source">Sources: [Reddit threads, articles, reports]</div>
+</div>
+<div class="finding medium">
+  <strong><span class="tag tag-orange">TREND</span> [Trend Name]</strong>
+  <p>[Description of trend and its predicted impact on COMPANY. Cite sources.]</p>
+  <div class="source">Sources: [Reddit threads, articles, reports]</div>
+</div>
+<div class="finding low">
+  <strong><span class="tag tag-green">TREND</span> [Trend Name]</strong>
+  <p>[Description of trend and its predicted impact on COMPANY. Cite sources.]</p>
+  <div class="source">Sources: [Reddit threads, articles, reports]</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 4. WORKFLOW DEEP DIVE                                        -->
+<!-- ============================================================ -->
+<h2>4. Workflow Deep Dive</h2>
+
+<h3>4.1 End-to-End Process Map</h3>
+<p>
+  [Walk through COMPANY's core workflow from customer acquisition to delivery.
+  What does a typical transaction look like step by step? Include who does what,
+  which tools are used at each step, and how steps hand off between people.]
+</p>
+
+<ol>
+  <li><strong>Step 1 — [Name]:</strong> [Who does what using what tool. Pain points.]</li>
+  <li><strong>Step 2 — [Name]:</strong> [Who does what using what tool. Pain points.]</li>
+  <li><strong>Step 3 — [Name]:</strong> [Who does what using what tool. Pain points.]</li>
+  <li><strong>Step 4 — [Name]:</strong> [Who does what using what tool. Pain points.]</li>
+  <li><strong>Step 5 — [Name]:</strong> [Who does what using what tool. Pain points.]</li>
+  <!-- Extend as needed -->
+</ol>
+
+<h3>4.2 Bottleneck Analysis</h3>
+<table>
+  <thead>
+    <tr><th>Bottleneck</th><th>Step</th><th>Severity</th><th>Time Lost</th><th>Root Cause</th><th>Automation Potential</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>[Bottleneck description]</td>
+      <td>[Step #]</td>
+      <td><span class="tag tag-red">High</span></td>
+      <td>[hours/week]</td>
+      <td>[why it happens]</td>
+      <td><span class="tag tag-green">Strong</span></td>
+    </tr>
+    <tr>
+      <td>[Bottleneck description]</td>
+      <td>[Step #]</td>
+      <td><span class="tag tag-orange">Medium</span></td>
+      <td>[hours/week]</td>
+      <td>[why it happens]</td>
+      <td><span class="tag tag-orange">Moderate</span></td>
+    </tr>
+    <tr>
+      <td>[Bottleneck description]</td>
+      <td>[Step #]</td>
+      <td><span class="tag tag-green">Low</span></td>
+      <td>[hours/week]</td>
+      <td>[why it happens]</td>
+      <td><span class="tag tag-red">Limited</span></td>
+    </tr>
+    <!-- Add/remove rows -->
+  </tbody>
+</table>
+
+<h3>4.3 Tooling Gaps</h3>
+<div class="finding high">
+  <strong>Gap: [Description of missing or inadequate tool]</strong>
+  <p>[What the current tool does vs. what's needed. Cost of the gap.]</p>
+</div>
+<div class="finding medium">
+  <strong>Gap: [Description of missing or inadequate tool]</strong>
+  <p>[What the current tool does vs. what's needed. Cost of the gap.]</p>
+</div>
+<div class="finding low">
+  <strong>Gap: [Description of missing or inadequate tool]</strong>
+  <p>[What the current tool does vs. what's needed. Cost of the gap.]</p>
+</div>
+
+<h3>4.4 Data Flow / Integration Map</h3>
+<p>
+  [How does data move between systems? Is there a single source of truth?
+  Where are the manual copy-paste points? What integrations are missing?]
+</p>
+<pre style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem;font-size:0.8rem;overflow-x:auto;margin:1rem 0;">
+
+  [Website / Store] ──→ [Order System] ──→ [Production Queue] ──→ [Fulfillment] ──→ [Customer Notification]
+       │                    │                     │                    │                    │
+       ▼                    ▼                     ▼                    ▼                    ▼
+  [CRM Entry]         [Payment]            [Vendor APIs]       [Shipping API]       [Follow-up]
+
+  ▸ Manual step: [e.g. orders exported as CSV, re-entered into production system]
+  ▸ Missing integration: [e.g. no auto-sync between CRM and order system]
+  ▸ Single source of truth: [e.g. Notion / Google Sheets / bespoke DB]
+</pre>
+
+<!-- ============================================================ -->
+<!-- 5. CUSTOMER & MARKET SIGNALS                                 -->
+<!-- ============================================================ -->
+<h2>5. Customer &amp; Market Signals</h2>
+
+<h3>5.1 Customer Sentiment</h3>
+<p>
+  [What are customers saying? Pull from reviews, social media, support tickets,
+  NPS surveys. Are they happy? What do they complain about? What do they ask for
+  most often?]
+</p>
+
+<div class="finding high">
+  <strong><span class="tag tag-red">PAIN</span> [Common Complaint]</strong>
+  <p>[Description of recurring customer complaint. Frequency. Business impact.]</p>
+  <div class="source">Sources: [review sites, support logs, social media]</div>
+</div>
+<div class="finding medium">
+  <strong><span class="tag tag-orange">REQUEST</span> [Common Feature Request]</strong>
+  <p>[Description of what customers keep asking for. Feasibility. Revenue impact.]</p>
+  <div class="source">Sources: [review sites, support logs, social media]</div>
+</div>
+
+<h3>5.2 Community &amp; Platform Signals</h3>
+<p>
+  [What are people saying about this industry/niche on Reddit, Quora, Twitter/X,
+  Indie Hackers, Hacker News? Are there recurring themes, frustrations with
+  competitors, unmet needs?]
+</p>
+
+<div class="finding medium">
+  <strong>r/[subreddit] — "[Post Title]"</strong>
+  <p>[Key takeaway from the thread. How many upvotes/comments. Sentiment.]</p>
+  <div class="source">
+    <a href="#">Reddit thread</a> — [date], [score] upvotes
+  </div>
+</div>
+<!-- Repeat for additional signal findings -->
+
+<!-- ============================================================ -->
+<!-- 6. OPPORTUNITIES & RECOMMENDATIONS                           -->
+<!-- ============================================================ -->
+<h2>6. Opportunities &amp; Recommendations</h2>
+
+<h3>6.1 Prioritized Opportunities</h3>
+<table>
+  <thead>
+    <tr><th>#</th><th>Opportunity</th><th>Impact</th><th>Effort</th><th>ROI</th><th>Timeline</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>[Highest-impact opportunity]</td>
+      <td><span class="tag tag-red">High</span></td>
+      <td><span class="tag tag-orange">Medium</span></td>
+      <td><span class="tag tag-green">Strong</span></td>
+      <td>[e.g. 2 weeks]</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>[Second opportunity]</td>
+      <td><span class="tag tag-orange">Medium</span></td>
+      <td><span class="tag tag-green">Low</span></td>
+      <td><span class="tag tag-green">Strong</span></td>
+      <td>[e.g. 1 month]</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>[Third opportunity]</td>
+      <td><span class="tag tag-orange">Medium</span></td>
+      <td><span class="tag tag-red">High</span></td>
+      <td><span class="tag tag-orange">Moderate</span></td>
+      <td>[e.g. 3 months]</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>[Fourth opportunity — longer-term]</td>
+      <td><span class="tag tag-green">Low</span></td>
+      <td><span class="tag tag-green">Low</span></td>
+      <td><span class="tag tag-green">Moderate</span></td>
+      <td>[e.g. 6 months]</td>
+    </tr>
+    <!-- Add/remove rows -->
+  </tbody>
+</table>
+
+<h3>6.2 Top Recommendations</h3>
+<div class="rec-card">
+  <h4>1. [Recommendation Title]</h4>
+  <p><strong>What:</strong> [Specific action to take. Be concrete.]</p>
+  <p><strong>Why:</strong> [Business justification. What problem does it solve? What metric does it move?]</p>
+  <p><strong>How:</strong> [Implementation approach. Tools, integrations, process changes.]</p>
+  <p><strong>Risk:</strong> [What could go wrong? Mitigation.]</p>
+</div>
+<div class="rec-card">
+  <h4>2. [Recommendation Title]</h4>
+  <p><strong>What:</strong> [Specific action to take.]</p>
+  <p><strong>Why:</strong> [Business justification.]</p>
+  <p><strong>How:</strong> [Implementation approach.]</p>
+  <p><strong>Risk:</strong> [What could go wrong? Mitigation.]</p>
+</div>
+<div class="rec-card">
+  <h4>3. [Recommendation Title]</h4>
+  <p><strong>What:</strong> [Specific action to take.]</p>
+  <p><strong>Why:</strong> [Business justification.]</p>
+  <p><strong>How:</strong> [Implementation approach.]</p>
+  <p><strong>Risk:</strong> [What could go wrong? Mitigation.]</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- 7. RESEARCH AGENT BRIEFING                                   -->
+<!-- ============================================================ -->
+<h2>7. Research Agent Briefing</h2>
+<p>
+  <em>This section defines the research queries that parallel agents should execute
+  BEFORE the report is compiled. Each agent investigates one dimension independently,
+  then findings are synthesized into the report above.</em>
+</p>
+
+<div class="agent-brief">
+  <h4>Agent A — Market &amp; Industry Research</h4>
+  <p><strong>Goal:</strong> Understand the market COMPANY operates in — size, growth, competitors, trends, regulatory environment.</p>
+  <div class="query">
+Research COMPANY and its industry for the following:
+1. Total addressable market size and growth rate (cite sources).
+2. Top 5 direct competitors — what they do, pricing, strengths/weaknesses.
+3. Search Reddit, Quora, Twitter/X, Hacker News for community sentiment about this industry — what are people complaining about? What do they want that they can't get?
+4. Identify 3-5 macro trends affecting this industry (regulation, tech shifts, consumer behavior).
+5. Where does COMPANY sit in the competitive landscape? Premium/budget/niche?
+Return findings organized with sources for each claim.
+  </div>
+</div>
+
+<div class="agent-brief">
+  <h4>Agent B — Workflow &amp; Operations Analysis</h4>
+  <p><strong>Goal:</strong> Map COMPANY's end-to-end workflow, identify bottlenecks, and find automation opportunities.</p>
+  <div class="query">
+Analyze COMPANY's operational workflow:
+1. Map the end-to-end process from customer inquiry to final delivery. List every step, who does it, and which tool(s) they use.
+2. Identify the top 5 bottlenecks — where does work pile up? Where are the manual copy-paste handoffs?
+3. For each bottleneck, estimate time lost per week and whether it could be automated.
+4. List all software tools in use. Which ones integrate? Which don't? Where is data duplicated?
+5. What would an ideal automated workflow look like for this business?
+Return findings with concrete examples and estimated time/cost savings.
+  </div>
+</div>
+
+<div class="agent-brief">
+  <h4>Agent C — Technology &amp; Stack Assessment</h4>
+  <p><strong>Goal:</strong> Evaluate COMPANY's current technology, find gaps, and propose tooling improvements.</p>
+  <div class="query">
+Assess COMPANY's technology stack:
+1. Catalog every software tool, platform, and service in use (website, CRM, payments, fulfillment, communication, docs).
+2. Evaluate each tool: is it the right fit? Are there better alternatives? What are common complaints about each tool from the community?
+3. Identify missing integrations — where should data flow automatically but doesn't?
+4. Research community recommendations for this industry's tech stack (Reddit r/smallbusiness, Indie Hackers, industry forums).
+5. Propose a target tech stack with specific tools, estimated costs, and migration complexity.
+Return findings with tool comparisons (pros/cons/costs).
+  </div>
+</div>
+
+<div class="agent-brief">
+  <h4>Agent D — Customer Experience &amp; Revenue</h4>
+  <p><strong>Goal:</strong> Understand the customer journey, where revenue leaks, and how to improve retention.</p>
+  <div class="query">
+Research COMPANY's customer experience and revenue model:
+1. Map the customer journey from discovery → purchase → fulfillment → follow-up. What is the experience at each stage?
+2. Identify where customers drop off or experience friction. What's the most common complaint?
+3. Analyze the revenue model: What are the revenue streams? Pricing? Average order value? Customer lifetime value?
+4. Research community discussions about similar businesses — what pricing models work? What do customers expect?
+5. Propose 3 ways to increase revenue (upsells, retention, new channels) based on industry best practices.
+Return findings with customer sentiment data and revenue impact estimates.
+  </div>
+</div>
+
+<div class="agent-brief">
+  <h4>Agent E — Risk &amp; Compliance</h4>
+  <p><strong>Goal:</strong> Identify business risks, regulatory requirements, and compliance gaps.</p>
+  <div class="query">
+Assess COMPANY's risk and compliance posture:
+1. What regulations apply to this industry? (data privacy, payment processing, shipping, industry-specific)
+2. What are the top business risks? (single points of failure, key-person dependency, supply chain, seasonal volatility)
+3. Research common legal/compliance pitfalls for businesses in this space (Reddit, Quora, legal forums).
+4. What insurance, contracts, or terms of service are standard in this industry?
+5. What happens if the owner/founder is unavailable for 2 weeks? What breaks?
+Return findings with risk severity ratings and mitigation recommendations.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 8. SOURCES &amp; METHODOLOGY                                    -->
+<!-- ============================================================ -->
+<h2>8. Sources &amp; Methodology</h2>
+
+<h3>8.1 Research Methodology</h3>
+<p>
+  [Describe how research was conducted. What platforms were searched? How many
+  sources were consulted? How were findings validated? What was the date range?]
+</p>
+
+<h3>8.2 Source Inventory</h3>
+<div class="source-list">
+  <ul>
+    <li><strong>Reddit:</strong> r/[subreddit1], r/[subreddit2], r/[subreddit3] — [summary of threads reviewed]</li>
+    <li><strong>Quora:</strong> [topics and threads reviewed]</li>
+    <li><strong>Twitter/X:</strong> [accounts, hashtags, conversations tracked]</li>
+    <li><strong>Hacker News:</strong> [relevant threads]</li>
+    <li><strong>Indie Hackers:</strong> [relevant discussions]</li>
+    <li><strong>Industry Publications:</strong> [publication names and articles]</li>
+    <li><strong>Internal Sources:</strong> [Notion docs, Slack history, team interviews, business data]</li>
+    <li><strong>Competitor Research:</strong> [websites, pricing pages, review sites analyzed]</li>
+    <li><strong>Stack Overflow / Dev Forums:</strong> [technology-specific threads]</li>
+  </ul>
+</div>
+
+<h3>8.3 Limitations</h3>
+<p>
+  [What are the limits of this research? What wasn't covered? What assumptions
+  were made? What would benefit from deeper investigation?]
+</p>
+
+<!-- ============================================================ -->
+<!-- FOOTER                                                       -->
+<!-- ============================================================ -->
+<div class="footnote">
+  <p>COMPANY Deep-Dive Research Report — Generated MONTH DD, YYYY</p>
+  <p>Research conducted by [Agent Names] — Compiled into this report by [Compiler]</p>
+  <p>Part of the [Project Name] — <code>[file path]</code></p>
+</div>
+
+</body>
+</html>
