@@ -95,6 +95,12 @@
         "description": "Show active cases or lookup by client name",
         "usage_hint": "[client name]",
         "should_escape": false
+      },
+      {
+        "command": "/casey-web",
+        "description": "Fetch and summarize any web page",
+        "usage_hint": "[url]",
+        "should_escape": false
       }
     ]
   },

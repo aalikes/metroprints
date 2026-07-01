@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-// Metro Strategic Briefing — bi-weekly Monday briefing (revenue, pipeline, priorities)
-// Cron: 0 6 * * 1 (every Monday) — listener auto-skips odd weeks
-// 0 6 * * 1 /usr/local/bin/node ~/Projects/metroprints/agents/metro/cron/briefing.mjs
+// Metro Strategic Briefing — bi-weekly Monday briefing
+// VPS crontab: 0 6 * * 1 /usr/bin/node /opt/hermes-agents/metroprints/metro/cron/briefing.mjs
 
 import { slackPost, llmThink, formatET } from "../../shared/cron-utils.mjs";
 

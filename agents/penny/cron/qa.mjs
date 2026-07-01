@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Penny Finance QA — weekly finance quality assurance pass
-// Cron: 0 9 * * 1 /usr/local/bin/node ~/Projects/metroprints/agents/penny/cron/qa.mjs
+// VPS crontab: 0 9 * * 1 /usr/bin/node /opt/hermes-agents/metroprints/penny/cron/qa.mjs
 
 import { slackPost, llmThink, formatET } from "../../shared/cron-utils.mjs";
 

@@ -218,6 +218,10 @@ const NOTION_DBS = {
   ori: "731bd0e1-0c8f-4db5-8fc5-4086e9cba134",
   projects: "27189d07-dc61-8140-abb6-d35934cf48a7",
   marketplace: "9bd3910c-6dc2-4bb7-81be-8af80b2a3e74",
+  contacts: "36389d07-dc61-8191-b14b-c279b699f142",
+  finance: "e3f5a9cf-2e0e-4c7d-90b1-8672c61b20e7",
+  transactions: "36389d07-dc61-8160-8a02-e9f966e9a39d",
+  budgets: "36389d07-dc61-816a-af99-eb57bd0b7d9f",
 };
 
 async function notion(method, path, body = null) {
@@ -252,6 +256,32 @@ async function checkWebsite() {
     return { up: false, status: res.status, latency_ms: ms };
   } catch (e) {
     return { up: false, error: e.message };
+  }
+}
+
+// ── Web Access ────────────────────────────────────────
+
+async function webFetch(url) {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "MetroPrints-Agent/1.0" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(15000),
+    });
+    const contentType = res.headers.get("content-type") || "";
+    const isHtml = contentType.includes("html");
+    const raw = await res.text();
+    const text = isHtml ? raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().substring(0, 4000) : raw.substring(0, 4000);
+    return {
+      ok: res.ok,
+      status: res.status,
+      url: res.url,
+      contentType,
+      text,
+      truncated: raw.length > 4000,
+    };
+  } catch (e) {
+    return { ok: false, error: e.message, url };
   }
 }
 

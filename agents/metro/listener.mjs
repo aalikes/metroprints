@@ -21,7 +21,7 @@ function isDuplicate(channel, user, ts) {
 // Active threads Metro is participating in (thread_ts → last activity timestamp)
 const activeThreads = new Map();
 const threadCooldowns = new Map(); // thread_ts → last response timestamp
-const KNOWN_BOTS = new Set(["U0BD79D3ZHD","U0BDF2P4SHL","U0BDVLQNWCC","U0BELA72LLQ"]);
+const KNOWN_BOTS = new Set(["U0BD79D3ZHD","U0BDF2P4SHL","U0BDVLQNWCC"]);
 function trackThread(threadTs, channel) {
   if (!threadTs) return;
   activeThreads.set(threadTs, Date.now());
@@ -263,24 +263,100 @@ async function checkWebsite() {
   }
 }
 
-// ── Email Check (Gmail IMAP via HTTP) ────────────────
+// ── Email Check (Gmail IMAP via imapflow) ─────────────
 
 const EMAIL_USER = process.env.METROPRINTS_EMAIL || "";
 const EMAIL_PASS = process.env.METROPRINTS_EMAIL_PASS || "";
+const EMAIL_ACTIVE = !!(EMAIL_USER && EMAIL_PASS);
 
-// Note: Gmail requires an App Password (not account password) for IMAP.
-// Generate at: https://myaccount.google.com/apppasswords
-// Casey uses this to scan for FBI Email #2 confirmations.
-// If App Password not set up, email monitoring will log an error and skip.
+let imapClient = null;
+
+async function getImapClient() {
+  if (!EMAIL_ACTIVE) return null;
+  if (imapClient) return imapClient;
+
+  try {
+    const { ImapFlow } = await import("imapflow");
+    imapClient = new ImapFlow({
+      host: "imap.gmail.com",
+      port: 993,
+      secure: true,
+      auth: { user: EMAIL_USER, pass: EMAIL_PASS },
+      logger: false,
+    });
+    await imapClient.connect();
+    console.log("[metro] IMAP connected");
+    return imapClient;
+  } catch (e) {
+    console.error("[metro] IMAP connection failed:", e.message);
+    imapClient = null;
+    return null;
+  }
+}
 
 async function checkRecentEmails(subjectFilter = "FBI", maxResults = 5) {
-  if (!EMAIL_USER || !EMAIL_PASS) {
+  if (!EMAIL_ACTIVE) {
     console.log("[metro] Email monitoring skipped — no credentials");
     return { ok: false, error: "no_credentials", results: [] };
   }
-  // Gmail IMAP via fetch is complex — simplified search via Gmail API planned
-  // For now, returns a notice that email requires Gmail API or App Password setup
-  return { ok: false, error: "gmail_api_required", results: [], note: "Requires Gmail API OAuth or Google App Password for IMAP. Generate at myaccount.google.com/apppasswords" };
+
+  const client = await getImapClient();
+  if (!client) {
+    return { ok: false, error: "imap_connection_failed", results: [], note: "Set METROPRINTS_EMAIL and METROPRINTS_EMAIL_PASS env vars with a Gmail App Password" };
+  }
+
+  try {
+    await client.mailboxOpen("INBOX");
+    const messages = [];
+
+    for await (const msg of client.fetch(
+      { seen: false },
+      { source: true, envelope: true, bodyStructure: true }
+    )) {
+      if (messages.length >= maxResults) break;
+      const subject = msg.envelope?.subject || "";
+      if (subject.toLowerCase().includes(subjectFilter.toLowerCase())) {
+        messages.push({
+          uid: msg.uid,
+          subject,
+          from: msg.envelope?.from?.[0]?.address || "unknown",
+          date: msg.envelope?.date || new Date(),
+          snippet: msg.source?.toString().substring(0, 200) || "",
+        });
+      }
+    }
+
+    return { ok: true, results: messages };
+  } catch (e) {
+    console.error("[metro] IMAP fetch error:", e.message);
+    return { ok: false, error: e.message, results: [] };
+  }
+}
+
+// ── Web Access ────────────────────────────────────────
+
+async function webFetch(url) {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "MetroPrints-Metro/1.0" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(15000),
+    });
+    const contentType = res.headers.get("content-type") || "";
+    const isHtml = contentType.includes("html");
+    const raw = await res.text();
+    const text = isHtml ? raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().substring(0, 4000) : raw.substring(0, 4000);
+    return {
+      ok: res.ok,
+      status: res.status,
+      url: res.url,
+      contentType,
+      text,
+      truncated: raw.length > 4000,
+    };
+  } catch (e) {
+    return { ok: false, error: e.message, url };
+  }
 }
 
 const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY || "";
@@ -303,6 +379,7 @@ const BASE_SYSTEM_PROMPT = `You are Metro, the MetroPrints executive intelligenc
 - YOU MANAGE KNOWLEDGE: detect SOP drift, update skill files, spot FAQ/blog opportunities.
 - YOU DETECT CONTENT: when client questions repeat, draft FAQs. When workflows change, update SOPs.
 - YOU COORDINATE: work with Casey (case-level signals), Penny (finance data), Cal (scheduling).
+- YOU ACCESS THE WEB: you can fetch and read any URL. Use /metro-web [url] to fetch a page. Reference the web for FDLE compliance updates, competitor research, industry news, or any external data relevant to MetroPrints operations.
 
 ## What You DO NOT Do
 - Do NOT manage individual cases — that's Casey's domain.
@@ -530,6 +607,19 @@ async function handleCommand(command, channel, user, text, responseUrl) {
         const learned = loadKnowledge();
         finalText = learned ? `Loaded knowledge from Obsidian:\n${KNOWLEDGE_FILES.map(f => `• ${f}`).join("\n")}` : "No Obsidian knowledge files found.";
         break;
+      case "/metro-web":
+        if (!text) { finalText = "Usage: `/metro-web <url>` — fetch and summarize a web page."; break; }
+        const url = text.trim();
+        if (!/^https?:\/\//.test(url)) { finalText = "Please provide a full URL starting with http:// or https://"; break; }
+        finalText = "Fetching...";
+        await fetch(responseUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: `Fetching ${url}...`, replace_original: true }) });
+        const webResult = await webFetch(url);
+        if (webResult.ok) {
+          finalText = `*Metro Web Fetch*\n\n${url}\n_Status: ${webResult.status} | ${webResult.contentType}_\n\n${webResult.text}${webResult.truncated ? "\n\n_(content truncated at 4000 chars)_" : ""}`;
+        } else {
+          finalText = `*Metro Web Fetch*\n\n${url}\n❌ Error: ${webResult.error}`;
+        }
+        break;
       default:
         // /metro — LLM-powered general query
         const messages = [
@@ -661,7 +751,7 @@ async function recallThread(channel, text) {
 }
 
 function showHelp() {
-  return `*Metro — MetroPrints Ops Intelligence & Knowledge Agent*\n\n*Ops:*\n• \`/metro [question]\` — Ask me anything\n• \`/metro snapshot\` — Operations snapshot\n• \`/metro pipeline\` — Pipeline health\n• \`/metro revenue\` — Revenue check\n• \`/metro briefing\` — Strategic briefing\n\n*Knowledge & Content:*\n• \`/metro content\` — Content opportunities\n\n*System:*\n• \`/metro-help\` — This menu\n• \`/metro-learn\` — Refresh Obsidian knowledge\n\nCases: ask Casey. Finance: ask Penny.`;
+  return `*Metro — MetroPrints Ops Intelligence & Knowledge Agent*\n\n*Ops:*\n• \`/metro [question]\` — Ask me anything\n• \`/metro snapshot\` — Operations snapshot\n• \`/metro pipeline\` — Pipeline health\n• \`/metro revenue\` — Revenue check\n• \`/metro briefing\` — Strategic briefing\n\n*Knowledge & Content:*\n• \`/metro content\` — Content opportunities\n• \`/metro web [url]\` — Fetch and summarize any web page\n\n*System:*\n• \`/metro-help\` — This menu\n• \`/metro-learn\` — Refresh Obsidian knowledge\n\nCases: ask Casey. Finance: ask Penny.`;
 }
 
 function nextBriefingDate() {

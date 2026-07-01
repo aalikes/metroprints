@@ -63,6 +63,7 @@ You audit the finance data that Make automations produce. You do NOT do raw tran
 - Summarize revenue / expense health on request
 - Flag unusual expenses or revenue drops
 - Review dedup registry failures
+- Access the web: fetch and read URLs for tax/IRS updates, Square/Stripe fee changes, compliance research. Use /penny-web [url] to fetch a page.
 
 ## What you explicitly do NOT do
 - You do not log new transactions yourself — that's Make's job now. If asked to log a fuel purchase, Square sale, or USPS fee, say so and point to Make.
@@ -106,7 +107,7 @@ function cleanText(text) {
 
 const activeThreads = new Map();
 const threadCooldowns = new Map(); // thread_ts → last response timestamp
-const KNOWN_BOTS = new Set(["U0BD79D3ZHD","U0BDF2P4SHL","U0BDVLQNWCC","U0BELA72LLQ"]);
+const KNOWN_BOTS = new Set(["U0BD79D3ZHD","U0BDF2P4SHL","U0BDVLQNWCC"]);
 function trackThread(threadTs) {
   if (!threadTs) return;
   activeThreads.set(threadTs, Date.now());
@@ -140,6 +141,32 @@ async function checkWebsite() {
     return { ok: res.ok, status: res.status, latencyMs: Date.now() - start };
   } catch (e) {
     return { ok: false, error: e.message };
+  }
+}
+
+// ── Web Access ────────────────────────────────────────
+
+async function webFetch(url) {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "MetroPrints-Penny/1.0" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(15000),
+    });
+    const contentType = res.headers.get("content-type") || "";
+    const isHtml = contentType.includes("html");
+    const raw = await res.text();
+    const text = isHtml ? raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().substring(0, 4000) : raw.substring(0, 4000);
+    return {
+      ok: res.ok,
+      status: res.status,
+      url: res.url,
+      contentType,
+      text,
+      truncated: raw.length > 4000,
+    };
+  } catch (e) {
+    return { ok: false, error: e.message, url };
   }
 }
 
@@ -196,6 +223,9 @@ async function showHelp(channel, thread) {
     "`/penny <question>` — ask me anything finance-related",
     "`/penny-revenue` — revenue / expense health summary",
     "`/penny-qa` — run a finance QA pass (missing categories, duplicates, stale tracker, anomalies)",
+    "`/penny web <url>` — fetch and summarize any web page",
+    "`/penny-help` — this menu",
+    "`/penny-learn` — reload my knowledge files",
     "`/penny-help` — this message",
     "`/penny-learn` — reload my Obsidian knowledge files",
     "",
@@ -226,6 +256,17 @@ async function handleCommand(command, channel, user, text, responseUrl) {
       break;
     case "/penny-learn":
       reply = "Reloading my knowledge files from Obsidian... (restart the listener to pick up edits — hot-reload isn't wired up yet, but I'll note this for the next deploy.)";
+      break;
+    case "/penny-web":
+      if (!text) { reply = "Usage: `/penny-web <url>` — fetch and summarize a web page. Use for tax info, compliance updates, expense research."; break; }
+      const webUrl = text.trim();
+      if (!/^https?:\/\//.test(webUrl)) { reply = "Please provide a full URL starting with http:// or https://"; break; }
+      reply = "Fetching...";
+      await fetch(responseUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: `Fetching ${webUrl}...`, replace_original: true }) });
+      const webResult = await webFetch(webUrl);
+      reply = webResult.ok
+        ? `*Penny Web Fetch*\n\n${webUrl}\n_Status: ${webResult.status} | ${webResult.contentType}_\n\n${webResult.text}${webResult.truncated ? "\n\n_(content truncated at 4000 chars)_" : ""}`
+        : `*Penny Web Fetch*\n\n${webUrl}\n❌ Error: ${webResult.error}`;
       break;
     case "/penny-revenue": {
       const web = await checkWebsite();

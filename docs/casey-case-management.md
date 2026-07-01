@@ -207,7 +207,9 @@ Casey can spawn ephemeral, task-scoped sub-agents to parallelize case management
 | System | Purpose | Status |
 |--------|---------|--------|
 | Slack | Primary interface — alerts, commands, DMs | ✅ Connected |
-| Notion MP Planning DB (27189d07...) | Case tracking, alert board | ⬜ Needs API key |
+| Notion MP Planning DB (27189d07...) | Case tracking, alert board | ✅ Connected |
+| Notion MP Contacts DB | Client contact data | ✅ Connected |
+| Notion Finance Tracker | Case payment tracking | ✅ Connected |
 | Obsidian vault | Knowledge base, SOPs | ✅ Read access |
 | Square/Stripe | Payment processing | ⬜ Needs API key |
 | FDLE portal | Certification verification | ⬜ Manual check |

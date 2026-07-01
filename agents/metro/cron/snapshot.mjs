@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // Metro Operations Snapshot — posts pipeline health snapshot to #metroprints-alerts
-// Cron: Mon/Wed/Fri/Sat 06:00 ET
-// 0 6 * * 1,3,5,6 /usr/local/bin/node ~/Projects/metroprints/agents/metro/cron/snapshot.mjs
+// VPS crontab: 0 6 * * 1,3,5,6 /usr/bin/node /opt/hermes-agents/metroprints/metro/cron/snapshot.mjs
 
 import { slackPost, llmThink, formatET } from "../../shared/cron-utils.mjs";
 

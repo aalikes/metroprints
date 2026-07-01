@@ -1,34 +1,43 @@
 // Shared utilities for Hermes agent cron jobs
-// Loaded by agent cron scripts to post to Slack, call LLM, query Notion
+// Runs on VPS (openclaw-helsinki-1) — env vars injected by systemd or crontab
+// For local macOS: reads from launchd plist
 
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-const HOME = process.env.HOME;
-const AGENTS_ROOT = join(import.meta.dirname, "..");
-
 function loadEnv(agentName) {
+  // On VPS: env vars are injected by systemd/crontab
+  // On macOS: read from launchd plist as fallback
+  const env = {
+    SLACK_XOXB_TOKEN: process.env.SLACK_XOXB_TOKEN || "",
+    NOTION_API_KEY: process.env.NOTION_API_KEY || "",
+    DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || "",
+  };
+
+  // If env vars are already set (VPS), use them
+  if (env.SLACK_XOXB_TOKEN && env.NOTION_API_KEY) return env;
+
+  // Fallback: try launchd plist (macOS)
+  const HOME = process.env.HOME || "/Users/shahsaint-cyr";
   const plistPath = join(HOME, "Library", "LaunchAgents", `com.metroprints.${agentName}.listener.plist`);
+  if (!existsSync(plistPath)) return env;
+
   try {
     const plist = readFileSync(plistPath, "utf-8");
-    const env = {};
-
     const keyMatch = (key) => {
       const regex = new RegExp(`<key>${key}</key>\\s*<string>([^<]+)</string>`, "s");
       const m = plist.match(regex);
       return m ? m[1].trim() : null;
     };
 
-    env.SLACK_XOXB_TOKEN = keyMatch("SLACK_XOXB_TOKEN");
-    env.NOTION_API_KEY = keyMatch("NOTION_API_KEY");
-    env.DEEPSEEK_API_KEY = keyMatch("DEEPSEEK_API_KEY");
-    env.SLACK_BOT_USER_ID = keyMatch("SLACK_BOT_USER_ID");
-
-    return env;
+    env.SLACK_XOXB_TOKEN = keyMatch("SLACK_XOXB_TOKEN") || env.SLACK_XOXB_TOKEN;
+    env.NOTION_API_KEY = keyMatch("NOTION_API_KEY") || env.NOTION_API_KEY;
+    env.DEEPSEEK_API_KEY = keyMatch("DEEPSEEK_API_KEY") || env.DEEPSEEK_API_KEY;
   } catch (e) {
     console.error(`Failed to read plist for ${agentName}:`, e.message);
-    return {};
   }
+
+  return env;
 }
 
 export async function slackPost(channel, text, agentName) {

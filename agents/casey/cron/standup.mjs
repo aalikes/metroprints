@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Casey Morning Standup — posts daily caseload summary to #metroprints-alerts
-// Cron: 0 8 * * * /usr/local/bin/node ~/Projects/metroprints/agents/casey/cron/standup.mjs
+// VPS crontab: 0 8 * * * /usr/bin/node /opt/hermes-agents/metroprints/casey/cron/standup.mjs
 
 import { slackPost, llmThink, formatET } from "../../shared/cron-utils.mjs";
 

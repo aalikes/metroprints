@@ -23,7 +23,7 @@ function isDuplicate(channel, user, ts) {
 // Messages in these threads don't need @mention — Casey is already in the conversation
 const activeThreads = new Map();
 const threadCooldowns = new Map(); // thread_ts → last response timestamp
-const KNOWN_BOTS = new Set(["U0BD79D3ZHD","U0BDF2P4SHL","U0BDVLQNWCC","U0BELA72LLQ"]);
+const KNOWN_BOTS = new Set(["U0BD79D3ZHD","U0BDF2P4SHL","U0BDVLQNWCC"]);
 function trackThread(threadTs, channel) {
   if (!threadTs) return;
   activeThreads.set(threadTs, Date.now());
@@ -235,6 +235,10 @@ const NOTION_DBS = {
   ori: "731bd0e1-0c8f-4db5-8fc5-4086e9cba134",
   projects: "27189d07-dc61-8140-abb6-d35934cf48a7",
   marketplace: "9bd3910c-6dc2-4bb7-81be-8af80b2a3e74",
+  contacts: "36389d07-dc61-8191-b14b-c279b699f142",
+  finance: "e3f5a9cf-2e0e-4c7d-90b1-8672c61b20e7",
+  transactions: "36389d07-dc61-8160-8a02-e9f966e9a39d",
+  budgets: "36389d07-dc61-816a-af99-eb57bd0b7d9f",
 };
 
 async function notion(method, path, body = null) {
@@ -269,6 +273,32 @@ async function checkWebsite() {
     return { up: false, status: res.status, latency_ms: ms };
   } catch (e) {
     return { up: false, error: e.message };
+  }
+}
+
+// ── Web Access ────────────────────────────────────────
+
+async function webFetch(url) {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "MetroPrints-Casey/1.0" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(15000),
+    });
+    const contentType = res.headers.get("content-type") || "";
+    const isHtml = contentType.includes("html");
+    const raw = await res.text();
+    const text = isHtml ? raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().substring(0, 4000) : raw.substring(0, 4000);
+    return {
+      ok: res.ok,
+      status: res.status,
+      url: res.url,
+      contentType,
+      text,
+      truncated: raw.length > 4000,
+    };
+  } catch (e) {
+    return { ok: false, error: e.message, url };
   }
 }
 
@@ -366,8 +396,10 @@ const BASE_SYSTEM_PROMPT = `You are Casey, the MetroPrints case management agent
 - SPAWN SYNTAX: [SPAWN:short-role-name]detailed-task-description[/SPAWN]. Spawned sub-agents run in parallel and their results replace the marker. Use multiple spawn blocks for swarm orchestration. Sub-agents are ephemeral — they run one task and terminate.
 - YOU MONITOR COMPLIANCE: FDLE certification status, operator background checks, insurance policy expirations, equipment calibration.
 - YOU MANAGE CASES: track every client from intake through fingerprinting, background check, apostille, to closure.
+- YOU MANAGE SCHEDULING: book appointments, coordinate technician routes, send reminders, handle reschedule requests.
 - YOU POST ALERTS: P0/P1 to #metroprints-critical, P2/P3 to #metroprints-alerts.
 - YOU REPORT: daily standups, weekly reviews, compliance status.
+- YOU ACCESS THE WEB: you can fetch and read any URL. Use /casey-web [url] to fetch a page. Reference the web for FDLE status checks, ORI lookups, industry regulations, and any external data relevant to case management.
 - REVENUE & FINANCE are handled by Penny, the finance oversight agent. Do NOT monitor Square/Stripe, revenue targets, or transactions. Coordinate with Penny when a case reaches a billable state.
 
 ## What You DO NOT Do
@@ -656,6 +688,19 @@ async function handleCommand(command, channel, user, text, responseUrl) {
       case "/casey-website":
         finalText = await checkWebsiteStatus();
         break;
+      case "/casey-web":
+        if (!text) { finalText = "Usage: `/casey-web <url>` — fetch and summarize a web page. Use for FDLE status checks, competitor research, industry updates."; break; }
+        const webUrl = text.trim();
+        if (!/^https?:\/\//.test(webUrl)) { finalText = "Please provide a full URL starting with http:// or https://"; break; }
+        finalText = "Fetching...";
+        await fetch(responseUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: `Fetching ${webUrl}...`, replace_original: true }) });
+        const webResult = await webFetch(webUrl);
+        if (webResult.ok) {
+          finalText = `*Casey Web Fetch*\n\n${webUrl}\n_Status: ${webResult.status} | ${webResult.contentType}_\n\n${webResult.text}${webResult.truncated ? "\n\n_(content truncated at 4000 chars)_" : ""}`;
+        } else {
+          finalText = `*Casey Web Fetch*\n\n${webUrl}\n❌ Error: ${webResult.error}`;
+        }
+        break;
       case "/casey-cases":
         finalText = await listRecentCases();
         break;
@@ -793,7 +838,7 @@ async function recallThread(channel, text) {
 }
 
 function showHelp() {
-  return `*Casey — MetroPrints Case Management Agent*\n\n*General:*\n• \`/casey [question]\` — Ask me anything\n• \`/casey-audit\` — Full workspace audit\n• \`/casey-channels\` — List all channels\n• \`/casey-members\` — List all members\n• \`/casey-status\` — Workspace health check\n• \`/casey-alert [P0-P3] [msg]\` — Post alert\n• \`/casey-recall [topic]\` — Summarize conversation\n\n*FBI PrintDeck:*\n• \`/casey fbi-intake [name]\` — Start new FBI case\n• \`/casey fbi-status [order#]\` — FBI case timeline\n• \`/casey fbi-stale\` — Cases stalled >48 hrs\n• \`/casey fbi-dispatch\` — Today's FBI action items\n\n*System:*\n• \`/casey-help\` — This menu\n• \`/casey-learn\` — Refresh Obsidian knowledge\n\nRevenue & finance: ask Penny.`;
+  return `*Casey — MetroPrints Case Management Agent*\n\n*General:*\n• \`/casey [question]\` — Ask me anything\n• \`/casey-audit\` — Full workspace audit\n• \`/casey-channels\` — List all channels\n• \`/casey-members\` — List all members\n• \`/casey-status\` — Workspace health check\n• \`/casey-alert [P0-P3] [msg]\` — Post alert\n• \`/casey-recall [topic]\` — Summarize conversation\n• \`/casey web [url]\` — Fetch and summarize any web page\n• \`/casey website\` — Check metroprints.co status\n• \`/casey cases [name]\` — Show cases\n\n*FBI PrintDeck:*\n• \`/casey fbi-intake [name]\` — Start new FBI case\n• \`/casey fbi-status [order#]\` — FBI case timeline\n• \`/casey fbi-stale\` — Cases stalled >48 hrs\n• \`/casey fbi-dispatch\` — Today's FBI action items\n\n*System:*\n• \`/casey-help\` — This menu\n• \`/casey-learn\` — Refresh Obsidian knowledge\n\nRevenue & finance: ask Penny.`;
 }
 
 function showFbiStatus(text) {

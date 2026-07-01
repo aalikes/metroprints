@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Metro Revenue Check — Saturday revenue/anomaly pass, coordinated with Penny
-// Cron: 0 6 * * 6 /usr/local/bin/node ~/Projects/metroprints/agents/metro/cron/revenue.mjs
+// Metro Revenue Check — Saturday revenue/anomaly pass
+// VPS crontab: 0 6 * * 6 /usr/bin/node /opt/hermes-agents/metroprints/metro/cron/revenue.mjs
 
 import { slackPost, llmThink, formatET } from "../../shared/cron-utils.mjs";
 

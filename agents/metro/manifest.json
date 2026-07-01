@@ -55,6 +55,12 @@
         "command": "/metro-learn",
         "description": "Refresh knowledge from Obsidian vault",
         "should_escape": false
+      },
+      {
+        "command": "/metro-web",
+        "description": "Fetch and summarize any web page",
+        "usage_hint": "[url]",
+        "should_escape": false
       }
     ]
   },

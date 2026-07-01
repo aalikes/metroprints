@@ -56,6 +56,7 @@ Metro is MetroPrints' executive intelligence and knowledge agent — the agent t
 - Detects client questions that should become FAQs
 - Drafts blog/FAQ entries once a content opportunity is approved
 - Updates SOP references when underlying workflows change
+- Fetches and summarizes arbitrary web pages for compliance research, competitor analysis, and industry intelligence
 
 **Swarm Orchestration & Sub-Agent side**
 
@@ -107,9 +108,11 @@ Metro serves as the bridge between Hermes agents and MetroPrints interns, coordi
 ## Data sources / integrations
 
 - **Reads:** MetroPrints Notion databases (cases, clients, activities, revenue/finance views), MP - Blog & Content
+- **Reads:** Arbitrary web URLs — can fetch and summarize any web page for compliance research, competitor analysis, industry news
 - **Writes:** Operations Live State page, MP AI Skill File, Workflow Skill Set, SOP references, draft blog/FAQ entries
 - **Posts to:** Slack (ops channel)
 - **Governs (does not itself execute):** Notion → Obsidian raw sync script
+- **Commands:** `/metro web <url>` — fetch and summarize any web page
 
 ## Coordination with other agents
 

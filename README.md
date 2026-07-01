@@ -1,27 +1,33 @@
 # MetroPrints Hermes Agent System
 
-Four AI agents (Metro, Casey, Penny, Cal) operating as Slack bots in the MetroPrints workspace — handling operations intelligence, case management, finance oversight, and scheduling.
+Three AI agents (Metro, Casey, Penny) operating as Slack bots in the MetroPrints workspace — handling operations intelligence, case management, finance oversight, and scheduling.
 
 ## Agents
 
 | Agent | Role | Channel | Status |
 |-------|------|---------|--------|
 | **Metro** | Executive intelligence — ops snapshots, revenue alerts, strategic briefings, knowledge/content | `#metroprints-alerts` | Active |
-| **Casey** | Case management — intake, FBI/Live Scan routing, daily triage, compliance monitoring | `#metroprints-critical` | Active |
+| **Casey** | Case management — intake, FBI/Live Scan routing, scheduling, appt reminders, daily triage, compliance | `#metroprints-critical` | Active |
 | **Penny** | Finance oversight — transaction QA, anomaly detection, dedup review, Make audit | `#metroprints-alerts` | Active |
-| **Cal** | Scheduling — mobile Live Scan appointments, technician routing, reminders | `#metroprints-alerts` | Draft |
+
 
 ## Architecture
 
 ```
-Slack Socket Mode (WebSocket) → Node.js listener → DeepSeek LLM
-                                                  → Notion API
-                                                  → Obsidian vault (knowledge)
-                                                  → Gmail IMAP (email monitoring)
-                                                  → metroprints.co (website monitor)
+openclaw-helsinki-1 (Hetzner, Finland)
+├── systemd: hermes-metro, hermes-casey, hermes-penny
+│   └── Node.js listener → DeepSeek LLM
+│                         → Notion API
+│                         → Slack Socket Mode
+│                         → Gmail IMAP
+│                         → Web (metroprints.co + arbitrary URLs)
+└── Docker: Firecrawl, SearXNG, Camofox (web access stack)
+
+MacBook Pro (local)
+└── OpenCode + MCP servers → SSH to VPS for management
 ```
 
-Each agent runs as a persistent Node.js process managed by launchd, with auto-restart on failure.
+Agents run on the VPS via systemd with auto-restart on failure. Deployment uses `scripts/vps-deploy.mjs`.
 
 ## Directory Structure
 
@@ -30,7 +36,6 @@ agents/
 ├── metro/          Metro listener, cron, manifest
 ├── casey/          Casey listener, cron, manifest
 ├── penny/          Penny listener, cron, manifest
-├── cal/            Cal listener, cron, manifest
 └── shared/         Shared utilities (cron-utils, subagent spawning)
 docs/               Agent specs, architecture, SOPs
 scripts/            Deployment and management scripts
@@ -40,18 +45,23 @@ scripts/            Deployment and management scripts
 ## Quick Commands
 
 ```bash
-# Deploy a new agent
+# Deploy agents to VPS
+node scripts/vps-deploy.mjs --all
+
+# Deploy a single agent to VPS
+node scripts/vps-deploy.mjs metro
+
+# Check agent status on VPS
+ssh hermes@openclaw-helsinki-1 systemctl status hermes-*
+
+# View agent logs on VPS
+ssh hermes@openclaw-helsinki-1 journalctl -u hermes-metro -f
+
+# Deploy a new agent locally (macOS)
 node scripts/hermes-deploy.mjs <name> <xapp> <xoxb> <bot-user-id> [description]
 
-# Check agent status
+# Check local agent status (macOS)
 launchctl list | grep metroprints
-
-# View agent logs
-tail -f ~/Library/Logs/com.metroprints.metro.listener.log
-
-# Restart an agent
-launchctl unload ~/Library/LaunchAgents/com.metroprints.metro.listener.plist
-launchctl load ~/Library/LaunchAgents/com.metroprints.metro.listener.plist
 ```
 
 ## Environment Variables
@@ -74,11 +84,14 @@ See `.env.example` for the full list. Each agent's launchd plist injects:
 | ORI | `731bd0e1-0c8f-4db5-8fc5-4086e9cba134` | All agents |
 | Projects | `27189d07-dc61-8140-abb6-d35934cf48a7` | All agents |
 | Marketplace | `9bd3910c-6dc2-4bb7-81be-8af80b2a3e74` | All agents |
-| Financial Tracker | `e3f5a9cf-2e0e-4c7d-90b1-8672c61b20e7` | Penny |
-| Transactions | `36389d07-dc61-8160-8a02-e9f966e9a39d` | Penny |
-| Budgets | `36389d07-dc61-816a-af99-eb57bd0b7d9f` | Penny |
+| Contacts | `36389d07-dc61-8191-b14b-c279b699f142` | Casey, Metro |
+| Financial Tracker | `e3f5a9cf-2e0e-4c7d-90b1-8672c61b20e7` | Casey, Penny |
+| Transactions | `36389d07-dc61-8160-8a02-e9f966e9a39d` | Casey, Penny |
+| Budgets | `36389d07-dc61-816a-af99-eb57bd0b7d9f` | Casey, Penny |
 
 ## Scheduled Jobs (Cron)
+
+Cron jobs run on the VPS (installed by `scripts/vps-deploy.mjs`).
 
 | Agent | Job | Schedule | Script |
 |-------|-----|----------|--------|
@@ -90,9 +103,6 @@ See `.env.example` for the full list. Each agent's launchd plist injects:
 | Metro | Revenue check | Sat 6:00 AM | `agents/metro/cron/revenue.mjs` |
 | Metro | Strategic briefing | Bi-weekly Mon 6:00 AM | `agents/metro/cron/briefing.mjs` |
 | Penny | Finance QA | Weekly Mon 9:00 AM | `agents/penny/cron/qa.mjs` |
-| Cal | Schedule review | Daily 7:00 AM | `agents/cal/cron/review.mjs` |
-
-Install: `crontab -e` and add entries from `docs/casey-task-register.md`.
 
 ## Sub-Agent Spawning
 
